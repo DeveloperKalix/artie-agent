@@ -9,6 +9,7 @@ import {
   deleteSnapTradeConnection,
   fetchSnapTradeAccounts,
   fetchSnapTradeConnections,
+  refreshSnapTradeConnection,
   snapTradeAddBroker,
   snapTradeConnect,
 } from '@/lib/snaptrade/api';
@@ -119,6 +120,11 @@ interface IntegrationsState {
   removeBankAccount: (account: BankAccount) => Promise<boolean>;
   /** Remove SnapTrade brokerage connection for this account. */
   removeExchangeAccount: (account: SnapTradeAccount) => Promise<boolean>;
+  /**
+   * Trigger a holdings re-sync for a brokerage connection and poll accounts
+   * until the sync completes. Safe to call from a manual "Refresh" button.
+   */
+  refreshExchangeConnection: (authorizationId: string) => Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +149,7 @@ const IntegrationsContext = createContext<IntegrationsState>({
   connectSnapTrade: async () => {},
   removeBankAccount: async () => false,
   removeExchangeAccount: async () => false,
+  refreshExchangeConnection: async () => false,
 });
 
 // ---------------------------------------------------------------------------
@@ -355,11 +362,69 @@ export function IntegrationsProvider({ children }: { children: React.ReactNode }
       // and then manually closed the sheet.
       if (result.type === 'success' || result.type === 'cancel') {
         await refreshExchangeAccounts();
+
+        // Trigger a holdings re-sync on the freshly-added connection and poll
+        // accounts until it completes. Fidelity in particular spends 30–120 s
+        // in a null-balance "syncing" state right after the portal closes.
+        try {
+          const { data: connData } = await fetchSnapTradeConnections(token, userId);
+          const connections = connData?.connections ?? [];
+          if (connections.length > 0) {
+            // Best-effort: the backend ordering puts newest first.
+            const latest = connections[0];
+            await refreshSnapTradeConnection(token, userId, latest.id);
+            // Poll every 3 s for up to ~30 s until every account reports sync complete.
+            for (let i = 0; i < 10; i++) {
+              await new Promise((resolve) => setTimeout(resolve, 3000));
+              const { data: acctsData } = await fetchSnapTradeAccounts(token, userId);
+              const accts = acctsData?.accounts ?? [];
+              setExchangeAccounts(accts);
+              if (
+                accts.length > 0 &&
+                accts.every((a) => a.sync?.holdings_initial_sync_completed === true)
+              ) {
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[SnapTrade] post-portal refresh failed (non-fatal)', e);
+        }
       }
     } finally {
       setLinkingExchange(false);
     }
   }, [token, userId, exchangeAccounts, refreshExchangeAccounts]);
+
+  // ── Manual resync for a single brokerage connection ───────────────────────
+  const refreshExchangeConnection = useCallback(
+    async (authorizationId: string) => {
+      if (!token || !userId) {
+        Alert.alert('Error', 'You must be signed in.');
+        return false;
+      }
+      const { error } = await refreshSnapTradeConnection(token, userId, authorizationId);
+      if (error) {
+        Alert.alert('Refresh failed', error);
+        return false;
+      }
+      // Poll accounts briefly to pick up the fresh balances.
+      for (let i = 0; i < 5; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        const { data: acctsData } = await fetchSnapTradeAccounts(token, userId);
+        const accts = acctsData?.accounts ?? [];
+        setExchangeAccounts(accts);
+        if (
+          accts.length > 0 &&
+          accts.every((a) => a.sync?.holdings_initial_sync_completed === true)
+        ) {
+          break;
+        }
+      }
+      return true;
+    },
+    [token, userId],
+  );
 
   /**
    * Plaid: `/item/remove` revokes the whole Item (all accounts under that bank login).
@@ -408,15 +473,15 @@ export function IntegrationsProvider({ children }: { children: React.ReactNode }
       }
 
       // Match on brokerage name — each connection covers all accounts for one broker login.
+      const institutionName = account.institution_name ?? '';
       const connection = connData.connections.find(
-        (c) =>
-          c.brokerage_name.toLowerCase() === account.institution_name.toLowerCase(),
+        (c) => c.brokerage_name.toLowerCase() === institutionName.toLowerCase(),
       );
 
       if (!connection) {
         Alert.alert(
           'Could not remove brokerage',
-          `No connection found for ${account.institution_name}. It may have already been removed.`,
+          `No connection found for ${institutionName || 'this brokerage'}. It may have already been removed.`,
         );
         return false;
       }
@@ -453,6 +518,7 @@ export function IntegrationsProvider({ children }: { children: React.ReactNode }
         connectSnapTrade,
         removeBankAccount,
         removeExchangeAccount,
+        refreshExchangeConnection,
       }}>
       {children}
     </IntegrationsContext.Provider>

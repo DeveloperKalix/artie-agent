@@ -9,5 +9,6 @@ export {
   ForesightErrorState,
   ForesightList,
   ForesightLoadingState,
+  ForesightRefreshBanner,
   useForesightRecommendations,
 } from './foresight-states';

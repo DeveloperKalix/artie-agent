@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -22,11 +23,28 @@ function formatTimestamp(iso: string): string {
 
 interface RecommendationCardProps {
   item: Recommendation;
+  /** Called the first time this card is pressed — used to mark it viewed server-side. */
+  onViewed?: (id: string) => void;
 }
 
-export function RecommendationCard({ item }: RecommendationCardProps) {
+export function RecommendationCard({ item, onViewed }: RecommendationCardProps) {
+  const markedRef = useRef(false);
+
+  const handlePress = () => {
+    if (!item.viewed && !markedRef.current) {
+      markedRef.current = true;
+      onViewed?.(item.id);
+    }
+  };
+
+  const isViewed = item.viewed;
+
   return (
-    <View className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <Pressable
+      onPress={handlePress}
+      accessibilityLabel={`${item.title} recommendation`}
+      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:opacity-80"
+      style={isViewed ? { opacity: 0.6 } : undefined}>
       <View className="flex-row">
         <RecommendationIcon action={item.action} />
         <View className="ml-3 flex-1 justify-center">
@@ -36,7 +54,7 @@ export function RecommendationCard({ item }: RecommendationCardProps) {
               numberOfLines={3}>
               {item.title}
             </Text>
-            {!item.viewed ? <Tag /> : null}
+            {!isViewed ? <Tag /> : null}
           </View>
           <Text className="mt-1.5 text-xs text-slate-500">{formatTimestamp(item.timestamp)}</Text>
         </View>
@@ -51,7 +69,10 @@ export function RecommendationCard({ item }: RecommendationCardProps) {
           {item.supporting_articles.map((article, idx) => (
             <Pressable
               key={article.id ?? `${article.url}-${idx}`}
-              onPress={() => void WebBrowser.openBrowserAsync(article.url)}
+              onPress={() => {
+                handlePress();
+                void WebBrowser.openBrowserAsync(article.url);
+              }}
               className="max-w-full flex-row items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 active:opacity-75"
               accessibilityLabel={`Open article: ${article.title}`}>
               <Text
@@ -64,6 +85,6 @@ export function RecommendationCard({ item }: RecommendationCardProps) {
           ))}
         </View>
       ) : null}
-    </View>
+    </Pressable>
   );
 }

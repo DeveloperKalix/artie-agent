@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -8,25 +8,56 @@ import {
   ForesightErrorState,
   ForesightList,
   ForesightLoadingState,
+  ForesightRefreshBanner,
   useForesightRecommendations,
 } from '@/components/foresight';
 
 export default function ForesightScreen() {
-  const { items, status, errorMessage, disclaimer, refreshing, refetch } =
-    useForesightRecommendations();
+  const {
+    newItems,
+    viewedItems,
+    disclaimer,
+    pendingNewsCount,
+    status,
+    errorMessage,
+    refreshing,
+    generating,
+    toast,
+    refetch,
+    generate,
+    markViewed,
+    dismissToast,
+  } = useForesightRecommendations();
 
-  // Keep a stable ref to refetch so useFocusEffect only subscribes once per
-  // mount. Without this, a new refetch identity (caused by token/userId
-  // changing after the initial render) would re-subscribe the effect, trigger
-  // a second fetch, advance the news cursor, and make subsequent calls return
-  // empty results.
+  // Stable refs so useFocusEffect subscribes exactly once per focus, not per
+  // identity change of the fetch/mark functions.
   const refetchRef = useRef(refetch);
   refetchRef.current = refetch;
+  const markViewedRef = useRef(markViewed);
+  markViewedRef.current = markViewed;
 
   useFocusEffect(
     useCallback(() => {
       void refetchRef.current();
-    }, []), // empty deps — intentional: we want one fetch per focus, not per refetch identity
+    }, []),
+  );
+
+  // Auto-dismiss the toast after 2.5s.
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(dismissToast, 2500);
+    return () => clearTimeout(t);
+  }, [toast, dismissToast]);
+
+  const totalItems = newItems.length + viewedItems.length;
+  const banner = (
+    <ForesightRefreshBanner
+      pendingNewsCount={pendingNewsCount}
+      onRefresh={() => {
+        void generate();
+      }}
+      generating={generating}
+    />
   );
 
   return (
@@ -37,25 +68,41 @@ export default function ForesightScreen() {
       </View>
 
       <View className="flex-1 px-4">
-        {status === 'loading' && items.length === 0 ? (
+        {status === 'loading' && totalItems === 0 ? (
           <ForesightLoadingState />
-        ) : status === 'error' && errorMessage && items.length === 0 ? (
+        ) : status === 'error' && errorMessage && totalItems === 0 ? (
           <ForesightErrorState message={errorMessage} onRetry={refetch} />
-        ) : items.length === 0 ? (
+        ) : totalItems === 0 ? (
           <ForesightEmptyScrollable
             onRefresh={refetch}
             refreshing={refreshing}
             disclaimer={disclaimer}
+            headerBanner={banner}
           />
         ) : (
           <ForesightList
-            data={items}
+            newItems={newItems}
+            viewedItems={viewedItems}
             onRefresh={refetch}
             refreshing={refreshing}
             disclaimer={disclaimer}
+            onViewItem={(id) => {
+              void markViewedRef.current(id);
+            }}
+            headerBanner={banner}
           />
         )}
       </View>
+
+      {toast ? (
+        <View
+          pointerEvents="none"
+          className="absolute bottom-4 left-4 right-4 items-center">
+          <View className="rounded-full bg-slate-900 px-4 py-2 shadow-lg">
+            <Text className="text-sm font-medium text-white">{toast}</Text>
+          </View>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }

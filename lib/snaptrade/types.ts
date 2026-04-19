@@ -25,16 +25,28 @@ export interface SnapTradeConnectResponse {
 // Accounts
 // ---------------------------------------------------------------------------
 
+/** Sync status per account — tells the UI whether data is still landing. */
+export interface SnapTradeAccountSync {
+  holdings_initial_sync_completed: boolean | null;
+  transactions_initial_sync_completed: boolean | null;
+  holdings_last_successful_sync: string | null;
+  transactions_last_successful_sync: string | null;
+}
+
 export interface SnapTradeAccount {
   id: string;
-  name: string;
-  number: string;
-  institution_name: string;
-  account_type: string;
-  status: string;
-  is_paper: boolean;
-  balance_total: number;
-  balance_currency: string;
+  name: string | null;
+  number: string | null;
+  institution_name: string | null;
+  account_type: string | null;
+  status: string | null;
+  is_paper: boolean | null;
+  /** Falls back to cash when total is null on the backend. `null` while syncing. */
+  balance_total: number | null;
+  /** Raw cash balance — useful as a secondary line on the account card. */
+  balance_cash: number | null;
+  balance_currency: string | null;
+  sync: SnapTradeAccountSync;
   raw: Record<string, unknown>;
 }
 

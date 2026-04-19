@@ -87,6 +87,17 @@ function RootLayoutNav() {
             headerShadowVisible: false,
           }}
         />
+        <Stack.Screen
+          name="account-detail"
+          options={{
+            headerShown: true,
+            title: 'Account',
+            headerStyle: { backgroundColor: tokens.color.brandTealDark },
+            headerTintColor: tokens.color.white,
+            headerTitleStyle: { color: tokens.color.white, fontWeight: '600' },
+            headerShadowVisible: false,
+          }}
+        />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

@@ -20,6 +20,7 @@ export type ForesightAction = 'buy' | 'sell' | 'liquidate';
  * on top for richer card content.
  */
 export interface Recommendation {
+  /** Stored recommendation UUID from the backend — required for markViewed. */
   id: string;
   title: string;
   /** ISO 8601 string */
@@ -33,6 +34,8 @@ export interface Recommendation {
   supporting_articles?: NewsItem[];
   /** Raw backend action for screens that want full fidelity. */
   rawAction?: RecommendationAction;
+  /** ISO-8601 string set when the user has marked this foresight viewed. */
+  viewedAt?: string | null;
 }
 
 /**
@@ -59,22 +62,31 @@ export function toUiAction(
 /** Adapt a backend recommendation to the UI shape consumed by `RecommendationCard`. */
 export function toUiRecommendation(
   rec: PortfolioRecommendation,
-  generatedAt: string,
+  fallbackTimestamp: string,
 ): Recommendation {
   const title = rec.ticker
     ? `${rec.action.toUpperCase()} ${rec.ticker} · ${rec.confidence} confidence`
     : rec.explanation.split('. ')[0] ?? rec.explanation;
 
+  // Prefer the stored UUID so markViewed() can reach the right row. Fall back
+  // to a deterministic synthetic key only if the backend omits id (shouldn't
+  // happen for persisted foresights but keeps the list renderer safe).
+  const id =
+    rec.id && rec.id.length > 0
+      ? rec.id
+      : `${rec.ticker}-${rec.action}-${rec.generated_at ?? fallbackTimestamp}`;
+
   return {
-    id: `${rec.ticker}-${rec.action}-${generatedAt}`,
+    id,
     title,
-    timestamp: generatedAt,
+    timestamp: rec.generated_at ?? fallbackTimestamp,
     action: toUiAction(rec.action, rec.confidence),
-    viewed: false,
+    viewed: rec.viewed_at != null,
     ticker: rec.ticker,
     confidence: rec.confidence,
     explanation: rec.explanation,
     supporting_articles: rec.supporting_articles,
     rawAction: rec.action,
+    viewedAt: rec.viewed_at,
   };
 }
