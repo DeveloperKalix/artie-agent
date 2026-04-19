@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import * as Notifications from 'expo-notifications';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -9,6 +10,8 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuthOAuthCallback } from '@/hooks/use-auth-oauth-callback';
 import { AuthProvider, useAuth } from '../context/auth-context';
 import { IntegrationsProvider } from '@/components/integrations/integrations-states';
+import { ConversationsProvider } from '@/components/conversations/conversations-states';
+import { useRecommendationNotifications } from '@/lib/notifications/recommendations';
 import { tokens } from '@/styles/tokens';
 
 // This handles the "messy" layout at the root level
@@ -20,17 +23,29 @@ export const unstable_settings = {
 
 function RootLayoutNav() {
   useAuthOAuthCallback();
+  useRecommendationNotifications();
+
+  const { user, initialized } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+  const colorScheme = useColorScheme();
+
+  // When user taps a notification, deep-link to the Foresight tab.
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const url = response.notification.request.content.data?.url as string | undefined;
+      if (url) {
+        router.push(url as never);
+      }
+    });
+    return () => sub.remove();
+  }, [router]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
       WebBrowser.maybeCompleteAuthSession();
     }
   }, []);
-
-  const { user, initialized } = useAuth();
-  const segments = useSegments();
-  const router = useRouter();
-  const colorScheme = useColorScheme();
 
   useEffect(() => {
     if (!initialized) return;
@@ -61,6 +76,17 @@ function RootLayoutNav() {
             headerShadowVisible: false,
           }}
         />
+        <Stack.Screen
+          name="memory"
+          options={{
+            headerShown: true,
+            title: 'Memory',
+            headerStyle: { backgroundColor: tokens.color.brandTealDark },
+            headerTintColor: tokens.color.white,
+            headerTitleStyle: { color: tokens.color.white, fontWeight: '600' },
+            headerShadowVisible: false,
+          }}
+        />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>
@@ -72,7 +98,9 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <AuthProvider>
         <IntegrationsProvider>
-          <RootLayoutNav />
+          <ConversationsProvider>
+            <RootLayoutNav />
+          </ConversationsProvider>
         </IntegrationsProvider>
       </AuthProvider>
     </SafeAreaProvider>

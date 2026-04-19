@@ -1,16 +1,28 @@
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? '';
 
-/** Milliseconds before a request is aborted and treated as a network error. */
+/** Default milliseconds before a request is aborted and treated as a network error. */
 const REQUEST_TIMEOUT_MS = 8000;
 
 export type QueryMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export interface QueryOptions<TBody = unknown> {
   method?: QueryMethod;
-  body?: TBody;
+  /**
+   * Request body. If a `FormData` instance, the request is sent as
+   * `multipart/form-data` and `Content-Type` is left to `fetch` to set
+   * (so the multipart boundary is included). Any other value is JSON-encoded.
+   */
+  body?: TBody | FormData;
   headers?: Record<string, string>;
   /** Supabase JWT — pass session?.access_token from useAuth() */
   token?: string | null;
+  /**
+   * Override the default 8s timeout. Use larger values for slow upstreams:
+   *   - Voice / Whisper uploads: 60_000
+   *   - On-demand LLM recommendations: 45_000
+   *   - Regular chat POSTs: 30_000
+   */
+  timeoutMs?: number;
 }
 
 export interface QueryResult<TData> {
@@ -29,12 +41,20 @@ export async function query<TData = unknown, TBody = unknown>(
   path: string,
   options: QueryOptions<TBody> = {},
 ): Promise<QueryResult<TData>> {
-  const { method = 'GET', body, headers: extraHeaders = {}, token } = options;
+  const {
+    method = 'GET',
+    body,
+    headers: extraHeaders = {},
+    token,
+    timeoutMs = REQUEST_TIMEOUT_MS,
+  } = options;
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...extraHeaders,
-  };
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+
+  const headers: Record<string, string> = { ...extraHeaders };
+  if (!isFormData) {
+    headers['Content-Type'] = headers['Content-Type'] ?? 'application/json';
+  }
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -43,13 +63,22 @@ export async function query<TData = unknown, TBody = unknown>(
   const url = `${BACKEND_URL}${path.startsWith('/') ? path : `/${path}`}`;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let requestBody: BodyInit | undefined;
+  if (body === undefined) {
+    requestBody = undefined;
+  } else if (isFormData) {
+    requestBody = body as unknown as FormData;
+  } else {
+    requestBody = JSON.stringify(body);
+  }
 
   try {
     const response = await fetch(url, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: requestBody,
       signal: controller.signal,
     });
 
@@ -74,7 +103,17 @@ export async function query<TData = unknown, TBody = unknown>(
       return { data: null, error: errorMessage, status: response.status };
     }
 
-    const data = (await response.json()) as TData;
+    // DELETE often returns 204 No Content with an empty body — avoid response.json() on that.
+    if (response.status === 204) {
+      return { data: null as TData, error: null, status: response.status };
+    }
+
+    const text = await response.text();
+    if (!text.trim()) {
+      return { data: null as TData, error: null, status: response.status };
+    }
+
+    const data = JSON.parse(text) as TData;
     return { data, error: null, status: response.status };
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {

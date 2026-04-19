@@ -1,162 +1,169 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert,
+  ActivityIndicator,
+  FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  setAudioModeAsync,
-  useAudioRecorder,
-  useAudioRecorderState,
-} from 'expo-audio';
 import { Ionicons } from '@expo/vector-icons';
 
-import { tokens } from '@/styles/tokens';
+import { Composer, HistorySheet, MessageBubble, useConversations } from '@/components/conversations';
+import type { UIMessage } from '@/components/conversations';
 import { AuraGlow } from '@/styles/animations/aura-glow';
+import { tokens } from '@/styles/tokens';
 
 export default function AgentScreen() {
   const insets = useSafeAreaInsets();
-  const [text, setText] = useState('');
+  const {
+    messages,
+    status,
+    pending,
+    error,
+    send,
+    sendVoice,
+    startNew,
+  } = useConversations();
 
-  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const recorderState = useAudioRecorderState(audioRecorder);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const listRef = useRef<FlatList<UIMessage>>(null);
 
-  const isEmpty = text.trim().length === 0;
-  const isRecording = recorderState.isRecording;
+  // Autoscroll to newest message whenever the list grows.
+  useEffect(() => {
+    if (messages.length === 0) return;
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd({ animated: true });
+    });
+  }, [messages.length]);
 
-  const toggleMic = useCallback(async () => {
-    if (isRecording) {
-      try {
-        const durationMs = audioRecorder.getStatus().durationMillis;
-        await audioRecorder.stop();
-        const uri = audioRecorder.uri;
-        await setAudioModeAsync({
-          allowsRecording: false,
-          playsInSilentMode: true,
-        });
-        if (uri) {
-          Alert.alert(
-            'Voice captured',
-            `Recorded about ${Math.round(durationMs / 1000) || 0}s. Sending voice to the agent is not wired yet; the file is on device.`,
-            [{ text: 'OK' }],
-          );
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Could not stop recording';
-        Alert.alert('Recording', msg);
-      }
-      return;
-    }
+  const onRetry = useCallback(
+    async (message: UIMessage) => {
+      await send(message.content);
+    },
+    [send],
+  );
 
-    try {
-      const { granted } = await requestRecordingPermissionsAsync();
-      if (!granted) {
-        Alert.alert(
-          'Microphone',
-          'Please allow microphone access in Settings to record voice commands.',
-        );
-        return;
-      }
-      await setAudioModeAsync({
-        allowsRecording: true,
-        playsInSilentMode: true,
-      });
-      await audioRecorder.prepareToRecordAsync();
-      audioRecorder.record();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Could not start recording';
-      Alert.alert('Recording', msg);
-    }
-  }, [audioRecorder, isRecording]);
+  const isEmpty = messages.length === 0;
+
+  // Tab bar sits below this screen; KAV needs its height in the offset so the
+  // composer doesn't end up behind the keyboard.
+  const tabBarHeight = 52 + Math.max(insets.bottom, 14) + 10 + 8;
+  const kavOffset = Platform.OS === 'ios' ? tabBarHeight : 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <KeyboardAvoidingView
         style={styles.keyboardRoot}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 8 : 0}>
-        <View style={styles.inner}>
-          <Text style={styles.title}>Agent</Text>
-          <Text style={styles.subtitle}>Send audio or text to your AI assistant.</Text>
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={kavOffset}>
 
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            showsVerticalScrollIndicator={false}>
-            {isEmpty && (
-              <View style={styles.hero}>
-                <View
-                  style={{
-                    width: tokens.aura.haloContainerSize,
-                    height: tokens.aura.haloContainerSize,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}>
-                  <AuraGlow />
-                  <Image
-                    source={require('../../assets/images/artie-favicon.png')}
-                    style={styles.favicon}
-                    resizeMode="contain"
-                  />
-                </View>
-                <Text style={styles.heroTitle}>What can I help with?</Text>
-                <Text style={styles.heroSub}>Type a message or tap the mic below.</Text>
-              </View>
-            )}
-          </ScrollView>
-
-          <View style={styles.inputColumn}>
-            {isRecording ? (
-              <View style={styles.recordingBanner}>
-                <View style={styles.recordingDot} />
-                <Text style={styles.recordingText}>Recording… tap mic again to stop</Text>
-              </View>
-            ) : null}
-            <View style={styles.inputCard}>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Type a command or question…"
-                placeholderTextColor="#94a3b8"
-                multiline
-                value={text}
-                onChangeText={setText}
-                textAlignVertical="top"
-              />
-              <View style={styles.inputActions}>
-                <TouchableOpacity
-                  style={[styles.iconBtn, isRecording && styles.iconBtnActive]}
-                  activeOpacity={0.7}
-                  accessibilityLabel={isRecording ? 'Stop recording' : 'Record voice'}
-                  onPress={() => void toggleMic()}>
-                  <Ionicons
-                    name={isRecording ? 'stop' : 'mic'}
-                    size={24}
-                    color={isRecording ? '#dc2626' : '#475569'}
-                  />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.sendBtn, { backgroundColor: tokens.color.brandTeal }]}
-                  activeOpacity={0.85}
-                  onPress={() => {}}>
-                  <Text style={styles.sendLabel}>Send</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+        {/* Header — tap anywhere to dismiss keyboard */}
+        <Pressable style={styles.headerRow} onPress={Keyboard.dismiss}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>Agent</Text>
+            <Text style={styles.subtitle}>Send audio or text to your AI assistant.</Text>
           </View>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            activeOpacity={0.7}
+            accessibilityLabel="Start new conversation"
+            onPress={startNew}>
+            <Ionicons name="create-outline" size={20} color="#475569" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            activeOpacity={0.7}
+            accessibilityLabel="Open conversation history"
+            onPress={() => setHistoryOpen(true)}>
+            <Ionicons name="time-outline" size={20} color="#475569" />
+          </TouchableOpacity>
+        </Pressable>
+
+        {/* Scrollable content area */}
+        {status === 'loading' && isEmpty ? (
+          <View style={styles.center}>
+            <ActivityIndicator color={tokens.color.brandTealDark} />
+          </View>
+        ) : isEmpty ? (
+          <ScrollView
+            style={styles.fill}
+            contentContainerStyle={styles.heroContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            showsVerticalScrollIndicator={false}>
+            <Pressable style={styles.hero} onPress={Keyboard.dismiss}>
+              <View
+                style={{
+                  width: tokens.aura.haloContainerSize,
+                  height: tokens.aura.haloContainerSize,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                <AuraGlow />
+                <Image
+                  source={require('../../assets/images/artie-favicon.png')}
+                  style={styles.favicon}
+                  resizeMode="contain"
+                />
+              </View>
+              <Text style={styles.heroTitle}>What can I help with?</Text>
+              <Text style={styles.heroSub}>
+                Type a message or tap the mic below. Start with /skill to teach me preferences.
+              </Text>
+            </Pressable>
+          </ScrollView>
+        ) : (
+          <FlatList
+            ref={listRef}
+            style={styles.fill}
+            data={messages}
+            keyExtractor={(m) => m.id}
+            renderItem={({ item }) => <MessageBubble message={item} onRetry={onRetry} />}
+            contentContainerStyle={styles.listContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            showsVerticalScrollIndicator={false}
+            ListFooterComponent={
+              pending ? (
+                <View style={styles.typingRow}>
+                  <ActivityIndicator size="small" color={tokens.color.brandTealDark} />
+                  <Text style={styles.typingText}>Artie is thinking…</Text>
+                </View>
+              ) : null
+            }
+          />
+        )}
+
+        {/* Error banner */}
+        {error && status === 'error' ? (
+          <View style={styles.errorBanner}>
+            <Ionicons name="warning-outline" size={14} color="#be123c" />
+            <Text style={styles.errorText} numberOfLines={2}>
+              {error}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Composer — always at the bottom of the KAV */}
+        <View style={styles.composerWrap}>
+          <Composer
+            onSendText={(text) => void send(text)}
+            onSendVoice={(uri) => void sendVoice(uri)}
+            pending={pending}
+          />
         </View>
+
       </KeyboardAvoidingView>
+
+      <HistorySheet visible={historyOpen} onClose={() => setHistoryOpen(false)} />
     </SafeAreaView>
   );
 }
@@ -168,11 +175,22 @@ const styles = StyleSheet.create({
   },
   keyboardRoot: {
     flex: 1,
-  },
-  inner: {
-    flex: 1,
     paddingHorizontal: 24,
     paddingTop: 16,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingBottom: 8,
+  },
+  headerBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f1f5f9',
   },
   title: {
     fontSize: 24,
@@ -184,17 +202,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#64748b',
   },
-  scroll: {
+  fill: {
     flex: 1,
-    minHeight: 120,
   },
-  scrollContent: {
+  heroContent: {
     flexGrow: 1,
-    paddingBottom: 8,
   },
   hero: {
     flex: 1,
-    minHeight: 280,
+    minHeight: 220,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 24,
@@ -208,84 +224,54 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: '#334155',
+    textAlign: 'center',
   },
   heroSub: {
     marginTop: 6,
     fontSize: 14,
     color: '#94a3b8',
+    textAlign: 'center',
   },
-  inputColumn: {
-    flexShrink: 0,
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listContent: {
+    flexGrow: 1,
+    paddingTop: 12,
     paddingBottom: 8,
+    marginHorizontal: -24,
   },
-  recordingBanner: {
+  typingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    paddingHorizontal: 4,
     gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
   },
-  recordingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#dc2626',
-  },
-  recordingText: {
+  typingText: {
     fontSize: 13,
     color: '#64748b',
-    flex: 1,
   },
-  inputCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#fff',
-    padding: 12,
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  textInput: {
-    minHeight: 100,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 16,
-    color: '#0f172a',
-  },
-  inputActions: {
-    marginTop: 12,
+  errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-    paddingTop: 12,
+    gap: 6,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#fff1f2',
+    borderWidth: 1,
+    borderColor: '#fecdd3',
   },
-  iconBtn: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 24,
-    backgroundColor: '#f1f5f9',
-  },
-  iconBtnActive: {
-    backgroundColor: '#fef2f2',
-  },
-  sendBtn: {
-    marginLeft: 12,
+  errorText: {
     flex: 1,
-    height: 48,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    fontSize: 12,
+    color: '#be123c',
   },
-  sendLabel: {
-    fontWeight: '600',
-    fontSize: 16,
-    color: '#fff',
+  composerWrap: {
+    paddingBottom: 8,
   },
 });

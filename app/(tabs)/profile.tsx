@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 
 import { supabase } from '@/lib/supabase';
 import { useUserProfile } from '@/hooks/use-user-profile';
+import { ExperienceLevelSegmented } from '@/components/profile';
 
 function ProfileScreen() {
   const router = useRouter();
@@ -19,7 +20,10 @@ function ProfileScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-slate-50" edges={['top']}>
-      <View className="flex-1 px-6 pt-4">
+      <ScrollView
+        className="flex-1 px-6"
+        contentContainerStyle={{ paddingTop: 16, paddingBottom: 32 }}
+        showsVerticalScrollIndicator={false}>
         <Text className="text-2xl font-bold text-slate-900">Profile</Text>
 
         <View className="mt-8 items-center">
@@ -42,23 +46,42 @@ function ProfileScreen() {
           {email ? <Text className="mt-1 text-slate-500">{email}</Text> : null}
         </View>
 
-        <View className="mt-10 rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <View className="mt-8">
+          <ExperienceLevelSegmented />
+        </View>
+
+        <View className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <TouchableOpacity
+            className="flex-row items-center justify-between border-b border-slate-100 px-4 py-4"
+            activeOpacity={0.7}
+            onPress={() => router.push('/memory')}>
+            <View className="flex-row items-center gap-3">
+              <Ionicons name="bookmark-outline" size={20} color="#475569" />
+              <Text className="text-base text-slate-900">Memory</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+          </TouchableOpacity>
           <TouchableOpacity
             className="flex-row items-center justify-between border-b border-slate-100 px-4 py-4"
             activeOpacity={0.7}
             onPress={() => router.push('/modal')}>
-            <Text className="text-base text-slate-900">Settings</Text>
+            <View className="flex-row items-center gap-3">
+              <Ionicons name="settings-outline" size={20} color="#475569" />
+              <Text className="text-base text-slate-900">Settings</Text>
+            </View>
             <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
           </TouchableOpacity>
           <TouchableOpacity
             className="flex-row items-center justify-between px-4 py-4"
             activeOpacity={0.7}
             onPress={onSignOut}>
-            <Text className="text-base text-red-600">Sign out</Text>
-            <Ionicons name="log-out-outline" size={20} color="#dc2626" />
+            <View className="flex-row items-center gap-3">
+              <Ionicons name="log-out-outline" size={20} color="#dc2626" />
+              <Text className="text-base text-red-600">Sign out</Text>
+            </View>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }

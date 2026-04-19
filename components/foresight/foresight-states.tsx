@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -11,35 +11,61 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import type { Recommendation } from '@/components/foresight/foresight-types';
+import { toUiRecommendation } from '@/components/foresight/foresight-types';
 import { RecommendationCard } from '@/components/foresight/recommendation-card';
+import { postRecommendations } from '@/lib/recommendations/api';
+import { useAuth } from '@/context/auth-context';
 import { tokens } from '@/styles/tokens';
 
-type ForesightStatus = 'loading' | 'success' | 'error';
+type ForesightStatus = 'idle' | 'loading' | 'success' | 'error';
 
-/** Replace the body with your API when ready */
+/**
+ * Fetches recommendations from `POST /api/v1/recommendations` and keeps the
+ * last successful list around on errors (per integration guide § 5).
+ */
 export function useForesightRecommendations() {
-  const [status, setStatus] = useState<ForesightStatus>('success');
+  const { session } = useAuth();
+  const token = session?.access_token ?? null;
+  const userId = session?.user?.id ?? null;
+
+  const [status, setStatus] = useState<ForesightStatus>('idle');
   const [items, setItems] = useState<Recommendation[]>([]);
+  const [disclaimer, setDisclaimer] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const refetch = useCallback(async () => {
-    setRefreshing(true);
-    setErrorMessage(null);
-    try {
-      // const data = await fetchForesightRecommendations();
-      await new Promise((r) => setTimeout(r, 500));
-      setItems([]);
-      setStatus('success');
-    } catch (e) {
-      setErrorMessage(e instanceof Error ? e.message : 'Something went wrong');
-      setStatus('error');
-    } finally {
-      setRefreshing(false);
-    }
-  }, []);
+  // Track whether we have a previous successful list without making it a dep
+  // of refetch (which would cause useFocusEffect to re-subscribe on every fetch).
+  const hasItemsRef = useRef(false);
 
-  return { items, status, errorMessage, refreshing, refetch, setItems };
+  const refetch = useCallback(async () => {
+    if (!token || !userId) {
+      setItems([]);
+      setDisclaimer(null);
+      setStatus('idle');
+      return;
+    }
+    setRefreshing(true);
+    setStatus((prev) => (prev === 'idle' ? 'loading' : prev));
+    setErrorMessage(null);
+    const { data, error } = await postRecommendations(token, userId);
+    if (error) {
+      // Keep the last successful list — don't wipe the screen on transient failures.
+      setErrorMessage(error);
+      setStatus(hasItemsRef.current ? 'success' : 'error');
+      setRefreshing(false);
+      return;
+    }
+    const generatedAt = data?.generated_at ?? new Date().toISOString();
+    const nextItems = (data?.recommendations ?? []).map((r) => toUiRecommendation(r, generatedAt));
+    setItems(nextItems);
+    hasItemsRef.current = nextItems.length > 0;
+    setDisclaimer(data?.disclaimer ?? null);
+    setStatus('success');
+    setRefreshing(false);
+  }, [token, userId]);
+
+  return { items, status, errorMessage, disclaimer, refreshing, refetch, setItems };
 }
 
 export function ForesightLoadingState() {
@@ -84,13 +110,23 @@ export function ForesightEmptyState() {
           style={{ backgroundColor: tokens.color.brandTealLight }}>
           <Ionicons name="telescope-outline" size={34} color={tokens.color.brandTealDark} />
         </View>
-        <Text className="mt-6 text-center text-lg font-semibold text-slate-900">No recommendations yet</Text>
+        <Text className="mt-6 text-center text-lg font-semibold text-slate-900">
+          Nothing actionable since your last check
+        </Text>
         <Text className="mt-2 max-w-xs text-center text-sm leading-relaxed text-slate-500">
           When your agent spots opportunities aligned with your goals, they will show up here with clear buy, sell,
-          or liquidate signals.
+          or liquidate signals. Pull down to refresh.
         </Text>
       </View>
     </View>
+  );
+}
+
+export function ForesightDisclaimer({ text }: { text: string }) {
+  return (
+    <Text className="mt-6 px-2 text-center text-[11px] leading-relaxed text-slate-400">
+      {text}
+    </Text>
   );
 }
 
@@ -98,9 +134,10 @@ interface ForesightListProps {
   data: Recommendation[];
   onRefresh: () => void;
   refreshing: boolean;
+  disclaimer?: string | null;
 }
 
-export function ForesightList({ data, onRefresh, refreshing }: ForesightListProps) {
+export function ForesightList({ data, onRefresh, refreshing, disclaimer }: ForesightListProps) {
   return (
     <FlatList
       data={data}
@@ -112,6 +149,7 @@ export function ForesightList({ data, onRefresh, refreshing }: ForesightListProp
       }
       showsVerticalScrollIndicator={false}
       contentContainerClassName="pb-10 pt-2"
+      ListFooterComponent={disclaimer ? <ForesightDisclaimer text={disclaimer} /> : null}
     />
   );
 }
@@ -120,9 +158,11 @@ export function ForesightList({ data, onRefresh, refreshing }: ForesightListProp
 export function ForesightEmptyScrollable({
   onRefresh,
   refreshing,
+  disclaimer,
 }: {
   onRefresh: () => void;
   refreshing: boolean;
+  disclaimer?: string | null;
 }) {
   return (
     <ScrollView
@@ -132,6 +172,7 @@ export function ForesightEmptyScrollable({
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={tokens.color.brandTealDark} />
       }>
       <ForesightEmptyState />
+      {disclaimer ? <ForesightDisclaimer text={disclaimer} /> : null}
     </ScrollView>
   );
 }

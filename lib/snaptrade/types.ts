@@ -38,8 +38,35 @@ export interface SnapTradeAccount {
   raw: Record<string, unknown>;
 }
 
+/** SnapTrade brokerage authorization UUID if exposed by the backend (also check `raw`). */
+export function brokerageAuthorizationIdFromAccount(account: SnapTradeAccount): string | undefined {
+  const r = account.raw;
+  if (!r || typeof r !== 'object') return undefined;
+  const o = r as Record<string, unknown>;
+  const id = o.brokerage_authorization_id ?? o.authorization_id ?? o.brokerageAuthorizationId;
+  return typeof id === 'string' && id.length > 0 ? id : undefined;
+}
+
 export interface SnapTradeAccountsResponse {
   accounts: SnapTradeAccount[];
+}
+
+// ---------------------------------------------------------------------------
+// Connections (brokerage authorizations)
+// ---------------------------------------------------------------------------
+
+/** Shape returned by `GET /api/v1/snaptrade/connections`. */
+export interface SnapTradeConnection {
+  /** Brokerage authorization UUID — pass this to DELETE /connections/{id}. */
+  id: string;
+  brokerage_name: string;
+  type: string;
+  disabled: boolean;
+  raw: Record<string, unknown>;
+}
+
+export interface SnapTradeConnectionsResponse {
+  connections: SnapTradeConnection[];
 }
 
 // ---------------------------------------------------------------------------

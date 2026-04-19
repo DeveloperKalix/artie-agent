@@ -3,6 +3,7 @@ import type {
   SnapTradeAccountsResponse,
   SnapTradeConnectRequest,
   SnapTradeConnectResponse,
+  SnapTradeConnectionsResponse,
   SnapTradeOrdersResponse,
   SnapTradePositionsResponse,
   SnapTradeTransactionsResponse,
@@ -42,6 +43,34 @@ export function fetchSnapTradeAccounts(token: string, userId: string) {
     `/api/v1/snaptrade/accounts?user_id=${encodeURIComponent(userId)}`,
     { token, headers: { 'X-User-Id': userId } },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Connections (brokerage authorizations)
+// ---------------------------------------------------------------------------
+
+/** List all brokerage connections. Each item's `id` is the authorization UUID needed for deletion. */
+export function fetchSnapTradeConnections(token: string, userId: string) {
+  return query<SnapTradeConnectionsResponse>(
+    `/api/v1/snaptrade/connections?user_id=${encodeURIComponent(userId)}`,
+    { token, headers: { 'X-User-Id': userId } },
+  );
+}
+
+/**
+ * Remove a brokerage authorization (and all accounts under it).
+ *
+ * `authorizationId` must come from `GET /api/v1/snaptrade/connections[].id`.
+ *
+ * 204 — disconnected
+ * 404 — user not registered or authorization not found
+ */
+export function deleteSnapTradeConnection(token: string, userId: string, authorizationId: string) {
+  return query<void>(`/api/v1/snaptrade/connections/${encodeURIComponent(authorizationId)}`, {
+    method: 'DELETE',
+    token,
+    headers: { 'X-User-Id': userId },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -88,3 +117,4 @@ export function fetchSnapTradeOrders(token: string, userId: string) {
     { token, headers: { 'X-User-Id': userId } },
   );
 }
+

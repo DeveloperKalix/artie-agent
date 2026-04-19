@@ -1,10 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { Alert } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 
 import { query } from '@/lib/api/query';
+import { deletePlaidAccount } from '@/lib/plaid/api';
 import {
+  deleteSnapTradeConnection,
   fetchSnapTradeAccounts,
+  fetchSnapTradeConnections,
   snapTradeAddBroker,
   snapTradeConnect,
 } from '@/lib/snaptrade/api';
@@ -38,6 +42,8 @@ export interface BankAccount {
   balance_available: number | null;
   balance_current: number;
   currency: string;
+  /** Plaid Item id — used when disconnecting (backend calls `/item/remove`). */
+  item_id?: string;
 }
 
 /** Plaid/API may return nested `balances` + `account_id` / `name`; UI expects flat fields. */
@@ -69,6 +75,7 @@ function normalizeBankAccount(raw: Record<string, unknown>): BankAccount {
       balances.unofficial_currency_code) ||
     'USD';
 
+  const itemId = raw.item_id;
   return {
     id: String(raw.account_id ?? raw.id ?? ''),
     institution_name: String(raw.institution_name ?? ''),
@@ -78,11 +85,14 @@ function normalizeBankAccount(raw: Record<string, unknown>): BankAccount {
     balance_available,
     balance_current,
     currency,
+    ...(typeof itemId === 'string' && itemId ? { item_id: itemId } : {}),
   };
 }
 
 // Re-export so card / integrations components can import from one place.
 export type { SnapTradeAccount };
+/** @deprecated Use `SnapTradeAccount` — kept for older barrel imports. */
+export type ExchangeAccount = SnapTradeAccount;
 
 export type IntegrationsLoadingState = 'idle' | 'loading' | 'success' | 'error';
 
@@ -105,6 +115,10 @@ interface IntegrationsState {
   exchangeLinkError: string | null;
   /** Open the SnapTrade connection portal to add the first or another brokerage. */
   connectSnapTrade: () => Promise<void>;
+  /** Remove Plaid Item for this account (see Plaid docs — not per-account). */
+  removeBankAccount: (account: BankAccount) => Promise<boolean>;
+  /** Remove SnapTrade brokerage connection for this account. */
+  removeExchangeAccount: (account: SnapTradeAccount) => Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +141,8 @@ const IntegrationsContext = createContext<IntegrationsState>({
   linkingExchange: false,
   exchangeLinkError: null,
   connectSnapTrade: async () => {},
+  removeBankAccount: async () => false,
+  removeExchangeAccount: async () => false,
 });
 
 // ---------------------------------------------------------------------------
@@ -345,6 +361,78 @@ export function IntegrationsProvider({ children }: { children: React.ReactNode }
     }
   }, [token, userId, exchangeAccounts, refreshExchangeAccounts]);
 
+  /**
+   * Plaid: `/item/remove` revokes the whole Item (all accounts under that bank login).
+   * Backend resolves `account_id` → Item / access_token.
+   */
+  const removeBankAccount = useCallback(
+    async (account: BankAccount) => {
+      if (!token || !userId) {
+        Alert.alert('Error', 'You must be signed in.');
+        return false;
+      }
+      const { error } = await deletePlaidAccount(token, {
+        user_id: userId,
+        account_id: account.id,
+        ...(account.item_id ? { item_id: account.item_id } : {}),
+      });
+      if (error) {
+        Alert.alert('Could not remove bank', error);
+        return false;
+      }
+      await refreshBankAccounts();
+      return true;
+    },
+    [token, userId, refreshBankAccounts],
+  );
+
+  /**
+   * SnapTrade: deleting a brokerage authorization removes all accounts under that connection.
+   *
+   * Step 1 — GET /connections to find the authorization id for this account's brokerage.
+   * Step 2 — DELETE /connections/{id} using that authorization id.
+   * Step 3 — Refresh the accounts list.
+   */
+  const removeExchangeAccount = useCallback(
+    async (account: SnapTradeAccount) => {
+      if (!token || !userId) {
+        Alert.alert('Error', 'You must be signed in.');
+        return false;
+      }
+
+      // Fetch connections to resolve the authorization id.
+      const { data: connData, error: connErr } = await fetchSnapTradeConnections(token, userId);
+      if (connErr || !connData) {
+        Alert.alert('Could not remove brokerage', connErr ?? 'Failed to load connections.');
+        return false;
+      }
+
+      // Match on brokerage name — each connection covers all accounts for one broker login.
+      const connection = connData.connections.find(
+        (c) =>
+          c.brokerage_name.toLowerCase() === account.institution_name.toLowerCase(),
+      );
+
+      if (!connection) {
+        Alert.alert(
+          'Could not remove brokerage',
+          `No connection found for ${account.institution_name}. It may have already been removed.`,
+        );
+        return false;
+      }
+
+      const { error } = await deleteSnapTradeConnection(token, userId, connection.id);
+      if (error) {
+        Alert.alert('Could not remove brokerage', error);
+        return false;
+      }
+
+      await refreshExchangeAccounts();
+      return true;
+    },
+    [token, userId, refreshExchangeAccounts],
+  );
+
   return (
     <IntegrationsContext.Provider
       value={{
@@ -363,6 +451,8 @@ export function IntegrationsProvider({ children }: { children: React.ReactNode }
         linkingExchange,
         exchangeLinkError,
         connectSnapTrade,
+        removeBankAccount,
+        removeExchangeAccount,
       }}>
       {children}
     </IntegrationsContext.Provider>

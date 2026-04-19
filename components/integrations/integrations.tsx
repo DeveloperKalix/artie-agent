@@ -1,8 +1,17 @@
 import React from 'react';
-import { ActivityIndicator, ScrollView as RNScrollView, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView as RNScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import type { SnapTradeAccount } from './integrations-states';
+import { confirmRemoveConnection } from '@/lib/ui/confirm-remove-connection';
+
+import type { BankAccount, SnapTradeAccount } from './integrations-states';
 import { useIntegrations } from './integrations-states';
 
 // ---------------------------------------------------------------------------
@@ -42,21 +51,37 @@ function Separator() {
 // Connected bank row
 // ---------------------------------------------------------------------------
 
-function ConnectedBankRow({ name, mask }: { name: string; mask: string }) {
+function ConnectedBankRow({
+  account,
+  onRequestRemove,
+}: {
+  account: BankAccount;
+  onRequestRemove: (account: BankAccount) => void;
+}) {
   return (
-    <View className="flex-row items-center justify-between rounded-xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+    <Pressable
+      onLongPress={() =>
+        confirmRemoveConnection(
+          'Remove bank connection',
+          'This disconnects your Plaid link for this institution. Plaid removes the entire bank login, so all accounts you linked under this institution will be removed.',
+          'Remove connection',
+          () => onRequestRemove(account),
+        )
+      }
+      delayLongPress={400}
+      className="flex-row items-center justify-between rounded-xl border border-slate-100 bg-white px-4 py-3 shadow-sm active:opacity-80">
       <View className="flex-row items-center gap-3">
         <View className="h-9 w-9 items-center justify-center rounded-full bg-teal-50">
           <Ionicons name="business-outline" size={18} color="#0D7377" />
         </View>
         <Text className="text-sm font-medium text-slate-900">
-          {name} •••• {mask}
+          {account.institution_name} •••• {account.mask}
         </Text>
       </View>
       <View className="rounded-full bg-emerald-50 px-2 py-0.5">
         <Text className="text-xs font-semibold text-emerald-600">Connected</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -106,12 +131,28 @@ function ConnectPlaidButton() {
 // Connected exchange row — SnapTrade schema
 // ---------------------------------------------------------------------------
 
-function ConnectedExchangeRow({ account }: { account: SnapTradeAccount }) {
+function ConnectedExchangeRow({
+  account,
+  onRequestRemove,
+}: {
+  account: SnapTradeAccount;
+  onRequestRemove: (account: SnapTradeAccount) => void;
+}) {
   const isPaper = account.is_paper;
   const isActive = account.status?.toUpperCase() === 'ACTIVE';
 
   return (
-    <View className="flex-row items-center justify-between rounded-xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+    <Pressable
+      onLongPress={() =>
+        confirmRemoveConnection(
+          'Remove brokerage connection',
+          'This disconnects the SnapTrade link for this brokerage. All accounts under this connection will be removed.',
+          'Remove connection',
+          () => onRequestRemove(account),
+        )
+      }
+      delayLongPress={400}
+      className="flex-row items-center justify-between rounded-xl border border-slate-100 bg-white px-4 py-3 shadow-sm active:opacity-80">
       <View className="flex-row items-center gap-3">
         <View className="h-9 w-9 items-center justify-center rounded-full bg-indigo-50">
           <Ionicons name="trending-up-outline" size={18} color="#4f46e5" />
@@ -138,7 +179,7 @@ function ConnectedExchangeRow({ account }: { account: SnapTradeAccount }) {
           </Text>
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -204,6 +245,8 @@ export function IntegrationsSettings() {
     exchangeStatus,
     exchangeError,
     refreshExchangeAccounts,
+    removeBankAccount,
+    removeExchangeAccount,
   } = useIntegrations();
 
   return (
@@ -228,8 +271,10 @@ export function IntegrationsSettings() {
         {bankAccounts.map((acct, i) => (
           <ConnectedBankRow
             key={acct.id ?? `bank-${acct.mask}-${i}`}
-            name={acct.institution_name}
-            mask={acct.mask}
+            account={acct}
+            onRequestRemove={(a) => {
+              void removeBankAccount(a);
+            }}
           />
         ))}
         <ConnectPlaidButton />
@@ -255,6 +300,9 @@ export function IntegrationsSettings() {
           <ConnectedExchangeRow
             key={acct.id ?? `exchange-${acct.name}-${i}`}
             account={acct}
+            onRequestRemove={(a) => {
+              void removeExchangeAccount(a);
+            }}
           />
         ))}
         <ConnectSnapTradeButton />

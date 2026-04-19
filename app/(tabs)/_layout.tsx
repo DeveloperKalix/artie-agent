@@ -1,20 +1,63 @@
 import { Tabs } from 'expo-router';
-import React from 'react';
-import { Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AppState, type AppStateStatus, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+
+import { getRecommendationStatus } from '@/lib/recommendations/api';
+import { useAuth } from '@/context/auth-context';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { AgentTabButton } from '@/components/tab-bar/agent-tab-button';
 import { ProfileTabIcon } from '@/components/tab-bar/profile-tab-icon';
 import { Colors } from '@/constants/theme';
 import { tabTransitionScreenOptions } from '@/styles/animations/transition';
+import { tokens } from '@/styles/tokens';
 
 /** Light tab bar only — keeps navbar distinct from content (matches home card: border + soft shadow). */
 const light = Colors.light;
 
+/** Returns the current `has_new` flag for the Foresight badge without firing LLM calls. */
+function useForesightBadge() {
+  const { session } = useAuth();
+  const token = session?.access_token ?? null;
+  const userId = session?.user?.id ?? null;
+  const [hasNew, setHasNew] = useState(false);
+  const checking = useRef(false);
+
+  useEffect(() => {
+    if (!token || !userId) {
+      setHasNew(false);
+      return;
+    }
+
+    const check = async () => {
+      if (checking.current) return;
+      checking.current = true;
+      try {
+        const { data } = await getRecommendationStatus(token, userId);
+        setHasNew(data?.has_new ?? false);
+      } catch {
+        // silent
+      } finally {
+        checking.current = false;
+      }
+    };
+
+    void check();
+
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') void check();
+    });
+    return () => sub.remove();
+  }, [token, userId]);
+
+  return hasNew;
+}
+
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const foresightHasNew = useForesightBadge();
   const bottomPad = Math.max(insets.bottom, 14) + 10;
   const tabBarHeight = 52 + bottomPad + 8;
 
@@ -60,6 +103,15 @@ export default function TabLayout() {
         name="foresight"
         options={{
           title: 'Foresight',
+          tabBarBadge: foresightHasNew ? '' : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: tokens.color.brandTeal,
+            minWidth: 10,
+            height: 10,
+            borderRadius: 5,
+            fontSize: 0,
+            lineHeight: 0,
+          },
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'trending-up' : 'trending-up-outline'} size={26} color={color} />
           ),

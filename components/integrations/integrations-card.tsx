@@ -1,6 +1,8 @@
 import React from 'react';
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
+import { confirmRemoveConnection } from '@/lib/ui/confirm-remove-connection';
 
 import type { SnapTradeAccount } from './integrations-states';
 import { BankAccount, useIntegrations } from './integrations-states';
@@ -52,9 +54,25 @@ function Separator() {
 // Bank account row
 // ---------------------------------------------------------------------------
 
-function BankAccountRow({ account }: { account: BankAccount }) {
+function BankAccountRow({
+  account,
+  onRequestRemove,
+}: {
+  account: BankAccount;
+  onRequestRemove: (account: BankAccount) => void;
+}) {
   return (
-    <View className="flex-row items-center justify-between py-3">
+    <Pressable
+      onLongPress={() =>
+        confirmRemoveConnection(
+          'Remove bank connection',
+          'This disconnects your Plaid link for this institution. Plaid removes the entire bank login, so all accounts you linked under this institution will be removed.',
+          'Remove connection',
+          () => onRequestRemove(account),
+        )
+      }
+      delayLongPress={400}
+      className="flex-row items-center justify-between py-3 active:opacity-70">
       <View className="flex-row items-center gap-3">
         <View className="h-10 w-10 items-center justify-center rounded-full bg-teal-50">
           <Ionicons name="business-outline" size={20} color="#0D7377" />
@@ -76,7 +94,7 @@ function BankAccountRow({ account }: { account: BankAccount }) {
           </Text>
         )}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -84,12 +102,28 @@ function BankAccountRow({ account }: { account: BankAccount }) {
 // Exchange account row — SnapTrade schema
 // ---------------------------------------------------------------------------
 
-function ExchangeAccountRow({ account }: { account: SnapTradeAccount }) {
+function ExchangeAccountRow({
+  account,
+  onRequestRemove,
+}: {
+  account: SnapTradeAccount;
+  onRequestRemove: (account: SnapTradeAccount) => void;
+}) {
   const isPaper = account.is_paper;
   const isActive = account.status?.toUpperCase() === 'ACTIVE';
 
   return (
-    <View className="flex-row items-center justify-between py-3">
+    <Pressable
+      onLongPress={() =>
+        confirmRemoveConnection(
+          'Remove brokerage connection',
+          'This disconnects the SnapTrade link for this brokerage. All accounts under this connection will be removed.',
+          'Remove connection',
+          () => onRequestRemove(account),
+        )
+      }
+      delayLongPress={400}
+      className="flex-row items-center justify-between py-3 active:opacity-70">
       <View className="flex-row items-center gap-3">
         <View className="h-10 w-10 items-center justify-center rounded-full bg-indigo-50">
           <Ionicons name="trending-up-outline" size={20} color="#4f46e5" />
@@ -117,7 +151,7 @@ function ExchangeAccountRow({ account }: { account: SnapTradeAccount }) {
           {isActive ? 'Active' : account.status}
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -167,7 +201,7 @@ function InlineError({ message }: { message: string }) {
 // ---------------------------------------------------------------------------
 
 function BankAccountsSection({ onAddAccount }: { onAddAccount?: () => void }) {
-  const { bankAccounts, bankStatus, bankError } = useIntegrations();
+  const { bankAccounts, bankStatus, bankError, removeBankAccount } = useIntegrations();
 
   return (
     <View>
@@ -188,7 +222,12 @@ function BankAccountsSection({ onAddAccount }: { onAddAccount?: () => void }) {
         ) : (
           bankAccounts.map((acct, i) => (
             <View key={acct.id ?? `bank-${i}`}>
-              <BankAccountRow account={acct} />
+              <BankAccountRow
+                account={acct}
+                onRequestRemove={(a) => {
+                  void removeBankAccount(a);
+                }}
+              />
               {i < bankAccounts.length - 1 && <View className="h-px bg-slate-50" />}
             </View>
           ))
@@ -202,7 +241,8 @@ function BankAccountsSection({ onAddAccount }: { onAddAccount?: () => void }) {
 // ---------------------------------------------------------------------------
 
 function ExchangeAccountsSection() {
-  const { exchangeAccounts, exchangeStatus, exchangeError } = useIntegrations();
+  const { exchangeAccounts, exchangeStatus, exchangeError, removeExchangeAccount } =
+    useIntegrations();
 
   return (
     <View>
@@ -220,7 +260,12 @@ function ExchangeAccountsSection() {
         ) : (
           exchangeAccounts.map((acct, i) => (
             <View key={acct.id ?? `exchange-${i}`}>
-              <ExchangeAccountRow account={acct} />
+              <ExchangeAccountRow
+                account={acct}
+                onRequestRemove={(a) => {
+                  void removeExchangeAccount(a);
+                }}
+              />
               {i < exchangeAccounts.length - 1 && <View className="h-px bg-slate-50" />}
             </View>
           ))
