@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -80,6 +80,11 @@ export default function ModalScreen() {
     tab === 'integrations' ? 'integrations' : 'general',
   ).current;
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+
+  useEffect(() => {
+    if (tab === 'integrations') setActiveTab('integrations');
+    else if (tab === 'general') setActiveTab('general');
+  }, [tab]);
 
   return (
     <View style={s.root}>

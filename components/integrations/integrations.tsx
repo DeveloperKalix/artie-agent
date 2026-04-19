@@ -187,8 +187,12 @@ export function IntegrationsSettings() {
       )}
 
       <View className="gap-2">
-        {bankAccounts.map((acct) => (
-          <ConnectedBankRow key={acct.id} name={acct.institution_name} mask={acct.mask} />
+        {bankAccounts.map((acct, i) => (
+          <ConnectedBankRow
+            key={acct.id ?? `bank-${acct.mask}-${i}`}
+            name={acct.institution_name}
+            mask={acct.mask}
+          />
         ))}
         <ConnectPlaidButton />
       </View>
@@ -209,9 +213,9 @@ export function IntegrationsSettings() {
       )}
 
       <View className="gap-2">
-        {exchangeAccounts.map((acct) => (
+        {exchangeAccounts.map((acct, i) => (
           <ConnectedExchangeRow
-            key={acct.id}
+            key={acct.id ?? `exchange-${acct.label}-${i}`}
             label={acct.label}
             exchangeName={acct.exchange_name}
           />

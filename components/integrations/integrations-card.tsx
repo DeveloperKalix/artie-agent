@@ -9,7 +9,7 @@ import { BankAccount, ExchangeAccount, useIntegrations } from './integrations-st
 // ---------------------------------------------------------------------------
 
 interface LinkedAccountsCardProps {
-  /** Called when the user taps "Add account" on the empty state. */
+  /** Opens Settings → Integrations (e.g. `/modal?tab=integrations`). */
   onAddAccount?: () => void;
 }
 
@@ -161,7 +161,7 @@ function BankAccountsSection({ onAddAccount }: { onAddAccount?: () => void }) {
           <EmptySlot label="No bank accounts linked yet" onAdd={onAddAccount} />
         ) : (
           bankAccounts.map((acct, i) => (
-            <View key={acct.id}>
+            <View key={acct.id ?? `bank-${i}`}>
               <BankAccountRow account={acct} />
               {i < bankAccounts.length - 1 && <View className="h-px bg-slate-50" />}
             </View>
@@ -193,7 +193,7 @@ function ExchangeAccountsSection() {
           <EmptySlot label="No exchange accounts linked yet" />
         ) : (
           exchangeAccounts.map((acct, i) => (
-            <View key={acct.id}>
+            <View key={acct.id ?? `exchange-${i}`}>
               <ExchangeAccountRow account={acct} />
               {i < exchangeAccounts.length - 1 && <View className="h-px bg-slate-50" />}
             </View>
@@ -228,6 +228,15 @@ export function LinkedAccountsCard({ onAddAccount }: LinkedAccountsCardProps) {
       <BankAccountsSection onAddAccount={onAddAccount} />
       <Separator />
       <ExchangeAccountsSection />
+      {onAddAccount ? (
+        <TouchableOpacity
+          onPress={onAddAccount}
+          activeOpacity={0.85}
+          className="mt-4 flex-row items-center justify-center gap-2 rounded-xl border border-teal-200 bg-teal-50/80 px-4 py-3.5">
+          <Ionicons name="add-circle-outline" size={22} color="#0D7377" />
+          <Text className="text-sm font-semibold text-teal-900">Add a bank or exchange account</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
