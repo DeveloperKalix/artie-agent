@@ -69,6 +69,40 @@ export const tokens = {
       breatheMs: 2600,
     },
   },
+
+  /** Foresight recommendation actions — icon halos + semantic accents */
+  foresight: {
+    buy: {
+      icon: 'trending-up' as const,
+      gradient: ['#2EB8B8', '#0D7377', 'transparent'] as const,
+      halo: 'rgba(46, 184, 184, 0.35)',
+      innerBg: 'rgba(255, 255, 255, 0.94)',
+      iconColor: '#0f172a',
+    },
+    sell: {
+      icon: 'trending-down' as const,
+      gradient: ['#f59e0b', '#d97706', 'transparent'] as const,
+      halo: 'rgba(245, 158, 11, 0.35)',
+      innerBg: 'rgba(255, 255, 255, 0.94)',
+      iconColor: '#0f172a',
+    },
+    liquidate: {
+      icon: 'flash' as const,
+      gradient: ['#f43f5e', '#be123c', 'transparent'] as const,
+      halo: 'rgba(244, 63, 94, 0.4)',
+      innerBg: '#9f1239',
+      iconColor: '#ffffff',
+    },
+  },
+
+  /** “NEW” and small labels */
+  tag: {
+    new: {
+      background: '#ecfeff',
+      text: '#0d7377',
+      border: '#99f6e4',
+    },
+  },
 } as const;
 
 export type Tokens = typeof tokens;

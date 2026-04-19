@@ -1,13 +1,12 @@
 import React, { useRef, useState } from 'react';
-import { Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { TouchableOpacity } from 'react-native';
 
 import { IntegrationsSettings } from '@/components/integrations/integrations';
 
 // ---------------------------------------------------------------------------
-// Tab definitions
+// Types
 // ---------------------------------------------------------------------------
 
 type SettingsTab = 'general' | 'integrations';
@@ -18,7 +17,8 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Tab bar
+// Tab bar — zero className props to avoid react-native-css-interop serializing
+// the navigation context and throwing in its printUpgradeWarning debug path.
 // ---------------------------------------------------------------------------
 
 function TabBar({
@@ -29,7 +29,7 @@ function TabBar({
   onChange: (t: SettingsTab) => void;
 }) {
   return (
-    <View className="mx-6 mt-4 flex-row rounded-xl bg-slate-100 p-1">
+    <View style={s.tabBar}>
       {TABS.map((tab) => {
         const isActive = tab.id === active;
         return (
@@ -37,16 +37,13 @@ function TabBar({
             key={tab.id}
             onPress={() => onChange(tab.id)}
             activeOpacity={0.8}
-            className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-lg py-2 ${
-              isActive ? 'bg-white shadow-sm' : ''
-            }`}>
+            style={[s.tabItem, isActive && s.tabItemActive]}>
             <Ionicons
               name={tab.icon as never}
               size={15}
               color={isActive ? '#0D7377' : '#94a3b8'}
             />
-            <Text
-              className={`text-sm font-semibold ${isActive ? 'text-teal-800' : 'text-slate-400'}`}>
+            <Text style={[s.tabLabel, isActive ? s.tabLabelActive : s.tabLabelInactive]}>
               {tab.label}
             </Text>
           </TouchableOpacity>
@@ -57,16 +54,16 @@ function TabBar({
 }
 
 // ---------------------------------------------------------------------------
-// General tab content — no navigation hooks; the Stack header provides back.
+// General tab
 // ---------------------------------------------------------------------------
 
 function GeneralSettings() {
   return (
-    <View className="flex-1 items-center justify-center px-6">
-      <View className="w-16 h-16 bg-slate-200 rounded-full items-center justify-center mb-6">
+    <View style={s.generalRoot}>
+      <View style={s.generalIcon}>
         <Ionicons name="settings-outline" size={32} color="#475569" />
       </View>
-      <Text className="text-slate-500 text-center">
+      <Text style={s.generalText}>
         Configure your agent preferences and security settings here.
       </Text>
     </View>
@@ -79,24 +76,88 @@ function GeneralSettings() {
 
 export default function ModalScreen() {
   const { tab } = useLocalSearchParams<{ tab?: SettingsTab }>();
-  const initialTab = useRef<SettingsTab>(tab === 'integrations' ? 'integrations' : 'general').current;
+  const initialTab = useRef<SettingsTab>(
+    tab === 'integrations' ? 'integrations' : 'general',
+  ).current;
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
 
   return (
-    <View className="flex-1 bg-slate-50">
+    <View style={s.root}>
       <TabBar active={activeTab} onChange={setActiveTab} />
-
-      <View style={{ flex: 1, marginTop: 16 }}>
-        {/*
-          Render only the active tab. The previous attempts used display:'none'
-          (web-only) or kept both mounted — neither solved the crash because
-          GeneralSettings was calling useRouter() which reaches into the
-          navigation context. That hook is now gone: the Stack header already
-          provides a back button, so no navigation hook is needed here at all.
-        */}
+      <View style={s.content}>
         {activeTab === 'general' && <GeneralSettings />}
         {activeTab === 'integrations' && <IntegrationsSettings />}
       </View>
     </View>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
+
+const s = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#f1f5f9',
+    borderRadius: 12,
+    padding: 4,
+    marginHorizontal: 24,
+    marginTop: 16,
+  },
+  tabItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  tabItemActive: {
+    backgroundColor: '#ffffff',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  tabLabelActive: {
+    color: '#134e4a',
+  },
+  tabLabelInactive: {
+    color: '#94a3b8',
+  },
+  content: {
+    flex: 1,
+    marginTop: 16,
+  },
+  generalRoot: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  generalIcon: {
+    width: 64,
+    height: 64,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  generalText: {
+    color: '#64748b',
+    textAlign: 'center',
+    fontSize: 14,
+  },
+});

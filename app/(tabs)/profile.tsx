@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,9 +27,10 @@ function ProfileScreen() {
             <View className="rounded-full border-4 border-white shadow-md">
               <Image
                 source={{ uri: avatarUrl }}
-                className="h-24 w-24 rounded-full"
+                style={styles.profileAvatar}
                 contentFit="cover"
                 transition={200}
+                accessibilityLabel="Profile photo"
               />
             </View>
           ) : (
@@ -61,5 +62,15 @@ function ProfileScreen() {
     </SafeAreaView>
   );
 }
+
+const PROFILE_AVATAR = 96;
+
+const styles = StyleSheet.create({
+  profileAvatar: {
+    width: PROFILE_AVATAR,
+    height: PROFILE_AVATAR,
+    borderRadius: PROFILE_AVATAR / 2,
+  },
+});
 
 export default ProfileScreen;

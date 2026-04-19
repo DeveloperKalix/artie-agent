@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -18,6 +20,13 @@ export const unstable_settings = {
 
 function RootLayoutNav() {
   useAuthOAuthCallback();
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      WebBrowser.maybeCompleteAuthSession();
+    }
+  }, []);
+
   const { user, initialized } = useAuth();
   const segments = useSegments();
   const router = useRouter();

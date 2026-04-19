@@ -1,4 +1,4 @@
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,9 +25,10 @@ export default function HomeScreen() {
           {avatarUrl ? (
             <Image
               source={{ uri: avatarUrl }}
-              className="h-16 w-16 rounded-full"
+              style={styles.avatar}
               contentFit="cover"
               transition={200}
+              accessibilityLabel="Profile photo"
             />
           ) : (
             <View className="h-16 w-16 items-center justify-center rounded-full bg-slate-200">
@@ -54,3 +55,13 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
+
+const AVATAR_SIZE = 64;
+
+const styles = StyleSheet.create({
+  avatar: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+  },
+});
