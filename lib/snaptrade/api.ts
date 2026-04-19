@@ -73,6 +73,30 @@ export function deleteSnapTradeConnection(token: string, userId: string, authori
   });
 }
 
+/**
+ * Force SnapTrade to re-pull holdings for a single brokerage connection.
+ * Call this right after the user returns from the Connection Portal, and
+ * expose it on each account card as a manual "Refresh" affordance.
+ *
+ * Response is SnapTrade's raw sync status — repoll `GET /snaptrade/accounts`
+ * ~3–5 s later to pick up fresh balances.
+ */
+export function refreshSnapTradeConnection(
+  token: string,
+  userId: string,
+  authorizationId: string,
+) {
+  return query<Record<string, unknown>>(
+    `/api/v1/snaptrade/connections/${encodeURIComponent(authorizationId)}/refresh`,
+    {
+      method: 'POST',
+      token,
+      headers: { 'X-User-Id': userId },
+      body: {},
+    },
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Positions
 // ---------------------------------------------------------------------------
