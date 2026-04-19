@@ -24,6 +24,72 @@ import { tokens } from '@/styles/tokens';
 
 type ForesightStatus = 'idle' | 'loading' | 'success' | 'error';
 
+/**
+ * Discrete view a Foresight screen should render. See `pickForesightView()`.
+ *
+ * Note: we intentionally deviate from phase-5 § 2.5's "all caught up" and
+ * "refresh ready" empty-state variants. Once the user has any viewed
+ * foresights, we keep rendering the list (so the history stays visible) —
+ * the in-list `ForesightRefreshBanner` already covers the "new news
+ * available" affordance.
+ */
+export type ForesightView =
+  | 'loading'         // first-load spinner
+  | 'error'           // first-load failed and we have no cached list
+  | 'auto-generating' // fresh user, news pending — waiting on auto-gen
+  | 'dormant'         // truly empty (no new, no viewed, no pending)
+  | 'list';           // we have content — render the list
+
+export interface PickForesightViewInput {
+  status: ForesightStatus;
+  errorMessage: string | null;
+  newCount: number;
+  viewedCount: number;
+  pendingNewsCount: number;
+  isFirstLoad: boolean;
+  refreshing: boolean;
+}
+
+/**
+ * Pure classifier that collapses the Foresight screen's possible states into
+ * one of five renderable views. Kept outside the screen so the decision
+ * table is trivially unit-testable and the JSX stays skimmable.
+ *
+ * Priority order:
+ *   1. Hard error with nothing cached → `'error'`
+ *   2. Still waiting on the very first response → `'loading'`
+ *   3. Have any cards (new OR viewed) → `'list'` — viewed history stays
+ *      visible even after the user has cleared the `new` bucket.
+ *   4. Completely empty but news is pending → `'auto-generating'` (backend
+ *      is spinning up the LLM on the next GET).
+ *   5. Truly empty → `'dormant'`.
+ */
+export function pickForesightView({
+  status,
+  errorMessage,
+  newCount,
+  viewedCount,
+  pendingNewsCount,
+  isFirstLoad,
+  refreshing,
+}: PickForesightViewInput): ForesightView {
+  if (status === 'error' && errorMessage && newCount === 0 && viewedCount === 0) {
+    return 'error';
+  }
+  if (isFirstLoad && (status === 'loading' || status === 'idle' || refreshing)) {
+    return 'loading';
+  }
+
+  // Once there's ANY content (new or viewed), always render the list. The
+  // in-list refresh banner handles the "news pending" affordance; we never
+  // hide the user's history behind a full-screen empty state.
+  if (newCount > 0 || viewedCount > 0) return 'list';
+
+  // No content at all.
+  if (pendingNewsCount > 0) return 'auto-generating';
+  return 'dormant';
+}
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -54,6 +120,10 @@ export function useForesightRecommendations() {
   const [refreshing, setRefreshing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // `true` until the first successful list fetch resolves. The screen uses
+  // this to distinguish "show a full-screen spinner because we have nothing
+  // yet" from "keep the stale list visible while a refetch is in flight".
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
 
   // Tracks whether we ever got a successful list — used to decide between
   // "error takeover" and "keep last successful list" on transient failures.
@@ -85,15 +155,48 @@ export function useForesightRecommendations() {
     }
 
     const now = new Date().toISOString();
-    const nextNew = (listRes.data?.new ?? []).map((r) => toUiRecommendation(r, now));
-    const nextViewed = (listRes.data?.viewed ?? []).map((r) => toUiRecommendation(r, now));
+    // Defensive: filter out any row that blows up during mapping so one bad
+    // payload can't wipe out the entire list. (`toUiRecommendation` itself
+    // already guards against missing fields; this is belt-and-suspenders.)
+    const safeMap = (rows: unknown[] | undefined): Recommendation[] => {
+      if (!Array.isArray(rows)) return [];
+      const out: Recommendation[] = [];
+      for (const r of rows) {
+        try {
+          out.push(toUiRecommendation(r as never, now));
+        } catch (err) {
+          if (__DEV__) {
+            console.warn('[foresight] skipped malformed recommendation', err, r);
+          }
+        }
+      }
+      return out;
+    };
+
+    const nextNew = safeMap(listRes.data?.new);
+    const nextViewed = safeMap(listRes.data?.viewed);
     setNewItems(nextNew);
     setViewedItems(nextViewed);
     hasLoadedRef.current = true;
+    setIsFirstLoad(false);
     setStatus('success');
 
     if (!statusRes.error && statusRes.data) {
       setPendingNewsCount(statusRes.data.pending_news_count ?? 0);
+
+      // Diagnostic: surface when /status and /recommendations disagree. This
+      // usually means the backend wrote the notification-count row but the
+      // list query is filtering them out (e.g. stale viewed_at clock skew).
+      if (__DEV__) {
+        const statusNewCount = statusRes.data.new_count ?? 0;
+        if (statusNewCount !== nextNew.length) {
+          console.warn(
+            '[foresight] mismatch: /status new_count=%d but /recommendations.new=%d',
+            statusNewCount,
+            nextNew.length,
+          );
+        }
+      }
     }
 
     setRefreshing(false);
@@ -118,6 +221,7 @@ export function useForesightRecommendations() {
     setNewItems(nextNew);
     setDisclaimer(data?.disclaimer ?? null);
     hasLoadedRef.current = true;
+    setIsFirstLoad(false);
     setStatus('success');
 
     const inserted = data?.new_count ?? 0;
@@ -175,6 +279,7 @@ export function useForesightRecommendations() {
     refreshing,
     generating,
     toast,
+    isFirstLoad,
     // Actions
     refetch,
     generate,
@@ -187,11 +292,11 @@ export function useForesightRecommendations() {
 // Presentational pieces
 // ---------------------------------------------------------------------------
 
-export function ForesightLoadingState() {
+export function ForesightLoadingState({ message }: { message?: string } = {}) {
   return (
     <View className="flex-1 items-center justify-center py-20">
       <ActivityIndicator size="large" color={tokens.color.brandTealDark} />
-      <Text className="mt-4 text-sm text-slate-500">Loading recommendations…</Text>
+      <Text className="mt-4 text-sm text-slate-500">{message ?? 'Loading recommendations…'}</Text>
     </View>
   );
 }
@@ -213,7 +318,23 @@ export function ForesightErrorState({ message, onRetry }: { message: string; onR
   );
 }
 
-export function ForesightEmptyState() {
+// ---------------------------------------------------------------------------
+// Empty-state scaffolding — four variants keyed off the (new, viewed, pending)
+// tuple per § 2.5 of frontend-phase5-integration.md.
+// ---------------------------------------------------------------------------
+
+/** Shared card chrome used by every empty-state variant. */
+function ForesightEmptyCard({
+  icon,
+  title,
+  body,
+  children,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  body: string;
+  children?: React.ReactNode;
+}) {
   return (
     <View className="flex-1 items-center justify-center px-8 py-12">
       <View
@@ -227,19 +348,103 @@ export function ForesightEmptyState() {
         <View
           className="h-16 w-16 items-center justify-center rounded-2xl"
           style={{ backgroundColor: tokens.color.brandTealLight }}>
-          <Ionicons name="telescope-outline" size={34} color={tokens.color.brandTealDark} />
+          <Ionicons name={icon} size={34} color={tokens.color.brandTealDark} />
         </View>
-        <Text className="mt-6 text-center text-lg font-semibold text-slate-900">
-          Nothing actionable since your last check
-        </Text>
+        <Text className="mt-6 text-center text-lg font-semibold text-slate-900">{title}</Text>
         <Text className="mt-2 max-w-xs text-center text-sm leading-relaxed text-slate-500">
-          When your agent spots opportunities aligned with your goals, they will show up here with clear buy, sell,
-          or liquidate signals. Pull down to refresh.
+          {body}
         </Text>
+        {children}
       </View>
     </View>
   );
 }
+
+/** `new=0, viewed=0, pending=0` — brand new user or totally quiet. */
+export function ForesightDormantState() {
+  return (
+    <ForesightEmptyCard
+      icon="telescope-outline"
+      title="Nothing yet — check back later"
+      body="When your agent spots opportunities aligned with your goals, they will show up here with clear buy, sell, or liquidate signals. Pull down to refresh."
+    />
+  );
+}
+
+/** `new=0, viewed>0, pending=0` — user has history and nothing new to show. */
+export function ForesightAllCaughtUpState() {
+  return (
+    <ForesightEmptyCard
+      icon="checkmark-done-outline"
+      title="All caught up"
+      body="You've seen every foresight your agent has generated. New analyses will arrive as relevant news breaks."
+    />
+  );
+}
+
+/**
+ * `new=0, viewed>0, pending>0` — new news has landed; promote the refresh
+ * CTA to a full-screen primary action instead of the subtle banner.
+ */
+export function ForesightRefreshReadyState({
+  pendingNewsCount,
+  onRefresh,
+  generating,
+}: {
+  pendingNewsCount: number;
+  onRefresh: () => void;
+  generating: boolean;
+}) {
+  return (
+    <ForesightEmptyCard
+      icon="sparkles-outline"
+      title="New analysis ready"
+      body={`${pendingNewsCount} new article${
+        pendingNewsCount === 1 ? '' : 's'
+      } since your last check. Tap below to have your agent take a fresh look at your portfolio.`}>
+      <Pressable
+        onPress={onRefresh}
+        disabled={generating}
+        className="mt-8 flex-row items-center gap-2 rounded-xl px-6 py-3 active:opacity-90"
+        style={{ backgroundColor: tokens.color.brandTealDark, opacity: generating ? 0.6 : 1 }}>
+        {generating ? (
+          <ActivityIndicator size="small" color="#ffffff" />
+        ) : (
+          <Ionicons name="refresh" size={18} color="#ffffff" />
+        )}
+        <Text className="text-sm font-semibold text-white">
+          {generating ? 'Analyzing…' : 'Generate now'}
+        </Text>
+      </Pressable>
+    </ForesightEmptyCard>
+  );
+}
+
+/**
+ * `new=0, viewed=0, pending>0` — auto-gen is running inside GET. The GET
+ * itself will block for 5–15 s so this is mostly for the case where we've
+ * already had one successful fetch and are polling on re-focus.
+ */
+export function ForesightAutoGeneratingState() {
+  return (
+    <View className="flex-1 items-center justify-center py-20">
+      <ActivityIndicator size="large" color={tokens.color.brandTealDark} />
+      <Text className="mt-4 text-sm font-semibold text-slate-700">Analyzing your portfolio…</Text>
+      <Text className="mt-1 max-w-xs text-center text-xs text-slate-500">
+        Your agent is reading the latest news and drafting foresights. This usually takes 5–15 seconds.
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Back-compat alias. Older callers imported `ForesightEmptyState`; the phase-5
+ * refactor splits empties into four distinct variants, with the "brand new user"
+ * case inheriting the old copy under the `ForesightDormantState` name.
+ *
+ * @deprecated prefer `ForesightDormantState` / `pickForesightView`.
+ */
+export const ForesightEmptyState = ForesightDormantState;
 
 export function ForesightDisclaimer({ text }: { text: string }) {
   return (
@@ -350,17 +555,23 @@ export function ForesightList({
   );
 }
 
-/** Empty state with pull-to-refresh */
+/**
+ * Pull-to-refresh scaffolding for any empty-state variant. The screen passes
+ * the concrete empty component (dormant / all-caught-up / refresh-ready /
+ * auto-generating) as children so the user can still swipe down to retry.
+ */
 export function ForesightEmptyScrollable({
   onRefresh,
   refreshing,
   disclaimer,
   headerBanner,
+  children,
 }: {
   onRefresh: () => void;
   refreshing: boolean;
   disclaimer?: string | null;
   headerBanner?: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   return (
     <ScrollView
@@ -370,7 +581,7 @@ export function ForesightEmptyScrollable({
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={tokens.color.brandTealDark} />
       }>
       {headerBanner ? <View className="mt-1">{headerBanner}</View> : null}
-      <ForesightEmptyState />
+      {children ?? <ForesightDormantState />}
       {disclaimer ? <ForesightDisclaimer text={disclaimer} /> : null}
     </ScrollView>
   );

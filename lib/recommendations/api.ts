@@ -24,12 +24,22 @@ export function getRecommendationStatus(token: string, userId: string) {
 
 /**
  * Fetch the user's persisted foresight feed, bucketed by view state.
- * Cheap — no LLM call. Render `new[]` above `viewed[]`.
+ *
+ * Phase 5: this endpoint auto-generates inline when `new[]` would be empty
+ * AND news is available (first call for a new user can block on Groq for
+ * 5–15 s). Subsequent calls within the backend's 3-minute cooldown window
+ * return immediately. We default the timeout to 45 s so the auto-gen path
+ * has enough room without starving the UI.
  */
-export function listRecommendations(token: string, userId: string) {
+export function listRecommendations(
+  token: string,
+  userId: string,
+  opts: { timeoutMs?: number } = {},
+) {
   return query<RecommendationsListResponse>('/api/v1/recommendations', {
     token,
     headers: { 'X-User-Id': userId },
+    timeoutMs: opts.timeoutMs ?? 45_000,
   });
 }
 

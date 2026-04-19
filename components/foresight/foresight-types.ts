@@ -64,9 +64,22 @@ export function toUiRecommendation(
   rec: PortfolioRecommendation,
   fallbackTimestamp: string,
 ): Recommendation {
-  const title = rec.ticker
-    ? `${rec.action.toUpperCase()} ${rec.ticker} · ${rec.confidence} confidence`
-    : rec.explanation.split('. ')[0] ?? rec.explanation;
+  // All fields are defensively coerced because a single malformed row
+  // shouldn't be able to poison Array.map() and wipe out the whole list.
+  const action: RecommendationAction = rec.action ?? 'hold';
+  const confidence: Confidence = rec.confidence ?? 'low';
+  const explanation = typeof rec.explanation === 'string' ? rec.explanation : '';
+  const ticker = rec.ticker ?? '';
+
+  let title: string;
+  if (ticker) {
+    title = `${action.toUpperCase()} ${ticker} · ${confidence} confidence`;
+  } else if (explanation) {
+    const firstSentence = explanation.split('. ')[0];
+    title = firstSentence && firstSentence.length > 0 ? firstSentence : explanation;
+  } else {
+    title = 'Recommendation';
+  }
 
   // Prefer the stored UUID so markViewed() can reach the right row. Fall back
   // to a deterministic synthetic key only if the backend omits id (shouldn't
@@ -74,19 +87,19 @@ export function toUiRecommendation(
   const id =
     rec.id && rec.id.length > 0
       ? rec.id
-      : `${rec.ticker}-${rec.action}-${rec.generated_at ?? fallbackTimestamp}`;
+      : `${ticker || 'unknown'}-${action}-${rec.generated_at ?? fallbackTimestamp}`;
 
   return {
     id,
     title,
     timestamp: rec.generated_at ?? fallbackTimestamp,
-    action: toUiAction(rec.action, rec.confidence),
+    action: toUiAction(action, confidence),
     viewed: rec.viewed_at != null,
-    ticker: rec.ticker,
-    confidence: rec.confidence,
-    explanation: rec.explanation,
+    ticker: ticker || undefined,
+    confidence,
+    explanation: explanation || undefined,
     supporting_articles: rec.supporting_articles,
-    rawAction: rec.action,
+    rawAction: action,
     viewedAt: rec.viewed_at,
   };
 }
