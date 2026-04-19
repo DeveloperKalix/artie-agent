@@ -2,7 +2,21 @@ import React from 'react';
 import { ActivityIndicator, ScrollView as RNScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+import type { SnapTradeAccount } from './integrations-states';
 import { useIntegrations } from './integrations-states';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function formatCurrency(amount: number | null | undefined, currency?: string | null) {
+  const n = typeof amount === 'number' && !Number.isNaN(amount) ? amount : 0;
+  const safeCode =
+    typeof currency === 'string' && /^[A-Z]{3}$/.test(currency.trim().toUpperCase())
+      ? currency.trim().toUpperCase()
+      : 'USD';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: safeCode }).format(n);
+}
 
 // ---------------------------------------------------------------------------
 // Section header (settings style)
@@ -89,10 +103,13 @@ function ConnectPlaidButton() {
 }
 
 // ---------------------------------------------------------------------------
-// Connected exchange row (SnapTrade-backed)
+// Connected exchange row — SnapTrade schema
 // ---------------------------------------------------------------------------
 
-function ConnectedExchangeRow({ label, exchangeName }: { label: string; exchangeName: string }) {
+function ConnectedExchangeRow({ account }: { account: SnapTradeAccount }) {
+  const isPaper = account.is_paper;
+  const isActive = account.status?.toUpperCase() === 'ACTIVE';
+
   return (
     <View className="flex-row items-center justify-between rounded-xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
       <View className="flex-row items-center gap-3">
@@ -100,12 +117,26 @@ function ConnectedExchangeRow({ label, exchangeName }: { label: string; exchange
           <Ionicons name="trending-up-outline" size={18} color="#4f46e5" />
         </View>
         <View>
-          <Text className="text-sm font-medium text-slate-900">{label}</Text>
-          <Text className="text-xs text-slate-400">{exchangeName}</Text>
+          <View className="flex-row items-center gap-1.5">
+            <Text className="text-sm font-medium text-slate-900">{account.name}</Text>
+            {isPaper && (
+              <View className="rounded bg-amber-100 px-1 py-0.5">
+                <Text className="text-[10px] font-semibold uppercase text-amber-700">Paper</Text>
+              </View>
+            )}
+          </View>
+          <Text className="text-xs text-slate-400">{account.institution_name}</Text>
         </View>
       </View>
-      <View className="rounded-full bg-emerald-50 px-2 py-0.5">
-        <Text className="text-xs font-semibold text-emerald-600">Connected</Text>
+      <View className="items-end gap-0.5">
+        <Text className="text-sm font-semibold text-slate-900">
+          {formatCurrency(account.balance_total, account.balance_currency)}
+        </Text>
+        <View className={`rounded-full px-2 py-0.5 ${isActive ? 'bg-emerald-50' : 'bg-slate-100'}`}>
+          <Text className={`text-xs font-semibold ${isActive ? 'text-emerald-600' : 'text-slate-400'}`}>
+            {isActive ? 'Active' : account.status}
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -116,7 +147,10 @@ function ConnectedExchangeRow({ label, exchangeName }: { label: string; exchange
 // ---------------------------------------------------------------------------
 
 function ConnectSnapTradeButton() {
-  const { connectSnapTrade, linkingExchange, exchangeLinkError } = useIntegrations();
+  const { connectSnapTrade, linkingExchange, exchangeLinkError, exchangeAccounts } =
+    useIntegrations();
+
+  const hasAccounts = exchangeAccounts.length > 0;
 
   return (
     <View className="gap-2">
@@ -130,12 +164,16 @@ function ConnectSnapTradeButton() {
             {linkingExchange ? (
               <ActivityIndicator size="small" color="#4f46e5" />
             ) : (
-              <Ionicons name="link-outline" size={20} color="#4f46e5" />
+              <Ionicons name={hasAccounts ? 'add' : 'link-outline'} size={20} color="#4f46e5" />
             )}
           </View>
           <View>
             <Text className="text-sm font-semibold text-indigo-900">
-              {linkingExchange ? 'Opening SnapTrade…' : 'Connect Exchange Accounts'}
+              {linkingExchange
+                ? 'Opening SnapTrade…'
+                : hasAccounts
+                  ? 'Add Another Brokerage'
+                  : 'Connect Exchange Accounts'}
             </Text>
             <Text className="text-xs text-indigo-600">Via SnapTrade — link brokerages securely</Text>
           </View>
@@ -215,9 +253,8 @@ export function IntegrationsSettings() {
       <View className="gap-2">
         {exchangeAccounts.map((acct, i) => (
           <ConnectedExchangeRow
-            key={acct.id ?? `exchange-${acct.label}-${i}`}
-            label={acct.label}
-            exchangeName={acct.exchange_name}
+            key={acct.id ?? `exchange-${acct.name}-${i}`}
+            account={acct}
           />
         ))}
         <ConnectSnapTradeButton />

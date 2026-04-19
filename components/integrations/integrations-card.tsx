@@ -2,7 +2,8 @@ import React from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { BankAccount, ExchangeAccount, useIntegrations } from './integrations-states';
+import type { SnapTradeAccount } from './integrations-states';
+import { BankAccount, useIntegrations } from './integrations-states';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,9 +18,13 @@ interface LinkedAccountsCardProps {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatCurrency(amount: number | null | undefined, currency = 'USD') {
+function formatCurrency(amount: number | null | undefined, currency?: string | null) {
   const n = typeof amount === 'number' && !Number.isNaN(amount) ? amount : 0;
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(n);
+  const safeCode =
+    typeof currency === 'string' && /^[A-Z]{3}$/.test(currency.trim().toUpperCase())
+      ? currency.trim().toUpperCase()
+      : 'USD';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: safeCode }).format(n);
 }
 
 // ---------------------------------------------------------------------------
@@ -76,22 +81,42 @@ function BankAccountRow({ account }: { account: BankAccount }) {
 }
 
 // ---------------------------------------------------------------------------
-// Exchange account row (placeholder for future integrations)
+// Exchange account row — SnapTrade schema
 // ---------------------------------------------------------------------------
 
-function ExchangeAccountRow({ account }: { account: ExchangeAccount }) {
+function ExchangeAccountRow({ account }: { account: SnapTradeAccount }) {
+  const isPaper = account.is_paper;
+  const isActive = account.status?.toUpperCase() === 'ACTIVE';
+
   return (
     <View className="flex-row items-center justify-between py-3">
       <View className="flex-row items-center gap-3">
         <View className="h-10 w-10 items-center justify-center rounded-full bg-indigo-50">
-          <Ionicons name="swap-horizontal-outline" size={20} color="#4f46e5" />
+          <Ionicons name="trending-up-outline" size={20} color="#4f46e5" />
         </View>
         <View>
-          <Text className="text-sm font-semibold text-slate-900">{account.label}</Text>
-          <Text className="text-xs text-slate-400">{account.exchange_name}</Text>
+          <View className="flex-row items-center gap-1.5">
+            <Text className="text-sm font-semibold text-slate-900">{account.name}</Text>
+            {isPaper && (
+              <View className="rounded bg-amber-100 px-1 py-0.5">
+                <Text className="text-[10px] font-semibold uppercase text-amber-700">Paper</Text>
+              </View>
+            )}
+          </View>
+          <Text className="text-xs text-slate-400">
+            {account.institution_name}
+            {account.number ? ` ···${account.number.slice(-4)}` : ''}
+          </Text>
         </View>
       </View>
-      <Ionicons name="chevron-forward" size={16} color="#cbd5e1" />
+      <View className="items-end">
+        <Text className="text-sm font-semibold text-slate-900">
+          {formatCurrency(account.balance_total, account.balance_currency)}
+        </Text>
+        <Text className={`text-xs ${isActive ? 'text-emerald-500' : 'text-slate-400'}`}>
+          {isActive ? 'Active' : account.status}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -229,6 +254,7 @@ export function LinkedAccountsCard({ onAddAccount }: LinkedAccountsCardProps) {
       <BankAccountsSection onAddAccount={onAddAccount} />
       <Separator />
       <ExchangeAccountsSection />
+
       {onAddAccount ? (
         <TouchableOpacity
           onPress={onAddAccount}
