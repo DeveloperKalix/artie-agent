@@ -35,6 +35,47 @@ export interface BankAccount {
   currency: string;
 }
 
+/** Plaid/API may return nested `balances` + `account_id` / `name`; UI expects flat fields. */
+function normalizeBankAccount(raw: Record<string, unknown>): BankAccount {
+  const balances =
+    raw.balances && typeof raw.balances === 'object'
+      ? (raw.balances as Record<string, unknown>)
+      : null;
+
+  const pickNum = (...vals: unknown[]): number | null => {
+    for (const v of vals) {
+      if (typeof v === 'number' && !Number.isNaN(v)) return v;
+      if (typeof v === 'string' && v.trim() !== '') {
+        const n = Number(v);
+        if (!Number.isNaN(n)) return n;
+      }
+    }
+    return null;
+  };
+
+  const balance_current = pickNum(raw.balance_current, balances?.current) ?? 0;
+  const balance_available = pickNum(raw.balance_available, balances?.available);
+
+  const currency =
+    (typeof raw.currency === 'string' && raw.currency) ||
+    (balances && typeof balances.iso_currency_code === 'string' && balances.iso_currency_code) ||
+    (balances &&
+      typeof balances.unofficial_currency_code === 'string' &&
+      balances.unofficial_currency_code) ||
+    'USD';
+
+  return {
+    id: String(raw.account_id ?? raw.id ?? ''),
+    institution_name: String(raw.institution_name ?? ''),
+    account_name: String(raw.name ?? raw.account_name ?? 'Account'),
+    account_type: String(raw.type ?? raw.account_type ?? ''),
+    mask: String(raw.mask ?? ''),
+    balance_available,
+    balance_current,
+    currency,
+  };
+}
+
 export interface ExchangeAccount {
   id: string;
   exchange_name: string;
@@ -111,7 +152,7 @@ export function IntegrationsProvider({ children }: { children: React.ReactNode }
     if (!userId) return;
     setBankStatus('loading');
     setBankError(null);
-    const { data, error, status } = await query<{ accounts: BankAccount[] }>(
+    const { data, error, status } = await query<{ accounts: Record<string, unknown>[] }>(
       `/api/v1/plaid/accounts?user_id=${encodeURIComponent(userId)}`,
       { token, headers: { 'X-User-Id': userId } },
     );
@@ -125,7 +166,8 @@ export function IntegrationsProvider({ children }: { children: React.ReactNode }
         setBankStatus('error');
       }
     } else {
-      setBankAccounts(accountsFromResponse<BankAccount>(data));
+      const rows = accountsFromResponse(data);
+      setBankAccounts(rows.map((r) => normalizeBankAccount(r)));
       setBankStatus('success');
     }
   }, [token, userId]);
@@ -267,27 +309,39 @@ export function IntegrationsProvider({ children }: { children: React.ReactNode }
     }
     setLinkingExchange(true);
     setExchangeLinkError(null);
+    // This scheme tells both iOS (ASWebAuthenticationSession) and SnapTrade where to
+    // redirect when the user taps "Done". iOS auto-closes the sheet as soon as it
+    // sees a navigation to this scheme; `openAuthSessionAsync` then resolves with
+    // type === 'success'. We pass it to the backend so it can forward it to SnapTrade
+    // as `redirect_uri` when creating the connection portal.
+    const snapTradeCallback = Linking.createURL('snaptrade-complete');
     try {
       const { data, error } = await query<{
-        redirect_url?: string;
+        /** Same as `url` — SnapTrade connection portal */
+        redirect_uri?: string;
         url?: string;
+        snaptrade_user_id?: string;
+        session_id?: string | null;
+        /** Legacy/alternate keys some backends use */
+        redirect_url?: string;
         link_url?: string;
-      }>('/api/v1/snaptrade/link', {
+      }>('/api/v1/snaptrade/connect', {
         method: 'POST',
         token,
-        body: { user_id: userId },
+        body: { user_id: userId, custom_redirect: snapTradeCallback },
       });
       if (error) {
         setExchangeLinkError(error);
         return;
       }
-      const openUrl = data?.redirect_url ?? data?.url ?? data?.link_url;
+      const openUrl =
+        data?.redirect_uri ?? data?.url ?? data?.redirect_url ?? data?.link_url;
       if (openUrl) {
-        const result = await WebBrowser.openAuthSessionAsync(
-          openUrl,
-          Linking.createURL('snaptrade-complete'),
-        );
-        if (result.type === 'success') {
+        const result = await WebBrowser.openAuthSessionAsync(openUrl, snapTradeCallback);
+        // type === 'success'  → user completed; SnapTrade redirected to our scheme
+        // type === 'cancel'   → user dismissed; still try to refresh in case they
+        //                       actually finished and then closed manually
+        if (result.type === 'success' || result.type === 'cancel') {
           await refreshExchangeAccounts();
         }
       } else {

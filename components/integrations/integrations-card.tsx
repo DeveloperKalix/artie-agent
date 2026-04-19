@@ -17,8 +17,9 @@ interface LinkedAccountsCardProps {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatCurrency(amount: number, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
+function formatCurrency(amount: number | null | undefined, currency = 'USD') {
+  const n = typeof amount === 'number' && !Number.isNaN(amount) ? amount : 0;
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(n);
 }
 
 // ---------------------------------------------------------------------------
@@ -64,7 +65,7 @@ function BankAccountRow({ account }: { account: BankAccount }) {
         <Text className="text-sm font-semibold text-slate-900">
           {formatCurrency(account.balance_current, account.currency)}
         </Text>
-        {account.balance_available !== null && (
+        {account.balance_available !== null && account.balance_available !== undefined && (
           <Text className="text-xs text-slate-400">
             {formatCurrency(account.balance_available, account.currency)} avail.
           </Text>
