@@ -12,6 +12,7 @@ import { AuthProvider, useAuth } from '../context/auth-context';
 import { IntegrationsProvider } from '@/components/integrations/integrations-states';
 import { ConversationsProvider } from '@/components/conversations/conversations-states';
 import { useRecommendationNotifications } from '@/lib/notifications/recommendations';
+import { useTradeNotifications } from '@/lib/notifications/trade-status';
 import { tokens } from '@/styles/tokens';
 
 // This handles the "messy" layout at the root level
@@ -24,6 +25,7 @@ export const unstable_settings = {
 function RootLayoutNav() {
   useAuthOAuthCallback();
   useRecommendationNotifications();
+  useTradeNotifications();
 
   const { user, initialized } = useAuth();
   const segments = useSegments();

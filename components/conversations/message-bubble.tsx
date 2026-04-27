@@ -2,6 +2,11 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import type { UIMessage } from '@/components/conversations/conversations-states';
+import { TradeProposalCard, TradeReminderCard } from '@/components/trade/trade-chat-cards';
+import {
+  isTradeProposalMetadata,
+  isTradeReminderMetadata,
+} from '@/lib/trade/types';
 import { tokens } from '@/styles/tokens';
 
 interface MessageBubbleProps {
@@ -88,6 +93,18 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
         </View>
       </View>
     );
+  }
+
+  // ── Assistant: trade proposal / trade reminder (Phase 6) ─────────────────
+  // These must run BEFORE the generic "chat" fallback so the rich card renders
+  // in place of a plain bubble. The type guards below also cover `intent_id`
+  // presence — without a valid id we fall through to the default bubble so
+  // the user still sees the assistant's free-form text.
+  if (isTradeProposalMetadata(message.metadata)) {
+    return <TradeProposalCard intentId={message.metadata.intent_id} />;
+  }
+  if (isTradeReminderMetadata(message.metadata)) {
+    return <TradeReminderCard intentId={message.metadata.intent_id} />;
   }
 
   // ── Assistant: error ─────────────────────────────────────────────────────

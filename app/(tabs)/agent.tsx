@@ -18,6 +18,11 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { Composer, HistorySheet, MessageBubble, useConversations } from '@/components/conversations';
 import type { UIMessage } from '@/components/conversations';
+import {
+  OrdersHistorySheet,
+  RemindersSheet,
+  useTradeStatus,
+} from '@/components/trade';
 import { AuraGlow } from '@/styles/animations/aura-glow';
 import { tokens } from '@/styles/tokens';
 
@@ -34,6 +39,9 @@ export default function AgentScreen() {
   } = useConversations();
 
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [remindersOpen, setRemindersOpen] = useState(false);
+  const [ordersOpen, setOrdersOpen] = useState(false);
+  const { pendingReminderCount } = useTradeStatus();
   const listRef = useRef<FlatList<UIMessage>>(null);
 
   // Autoscroll to newest message whenever the list grows.
@@ -71,6 +79,25 @@ export default function AgentScreen() {
             <Text style={styles.title}>Agent</Text>
             <Text style={styles.subtitle}>Send audio or text to your AI assistant.</Text>
           </View>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            activeOpacity={0.7}
+            accessibilityLabel={
+              pendingReminderCount > 0
+                ? `Open trading reminders, ${pendingReminderCount} pending`
+                : 'Open trading reminders'
+            }
+            onPress={() => setRemindersOpen(true)}>
+            <Ionicons name="notifications-outline" size={20} color="#475569" />
+            {pendingReminderCount > 0 ? <View style={styles.badgeDot} /> : null}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            activeOpacity={0.7}
+            accessibilityLabel="Open orders history"
+            onPress={() => setOrdersOpen(true)}>
+            <Ionicons name="receipt-outline" size={20} color="#475569" />
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerBtn}
             activeOpacity={0.7}
@@ -164,6 +191,8 @@ export default function AgentScreen() {
       </KeyboardAvoidingView>
 
       <HistorySheet visible={historyOpen} onClose={() => setHistoryOpen(false)} />
+      <RemindersSheet visible={remindersOpen} onClose={() => setRemindersOpen(false)} />
+      <OrdersHistorySheet visible={ordersOpen} onClose={() => setOrdersOpen(false)} />
     </SafeAreaView>
   );
 }
@@ -191,6 +220,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#f1f5f9',
+    position: 'relative',
+  },
+  badgeDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: tokens.color.brandTeal,
+    borderWidth: 1.5,
+    borderColor: '#f1f5f9',
   },
   title: {
     fontSize: 24,

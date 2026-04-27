@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 
 import { getRecommendationStatus } from '@/lib/recommendations/api';
+import { setBadgeContribution } from '@/lib/notifications/badge-coordinator';
 import { useAuth } from '@/context/auth-context';
 
 // ---------------------------------------------------------------------------
@@ -147,8 +148,8 @@ export function useRecommendationNotifications() {
 
         const currentCount = data.new_count ?? 0;
 
-        // Badge always mirrors current unviewed count.
-        await Notifications.setBadgeCountAsync(currentCount);
+        // Contribute to the unified app badge (see badge-coordinator).
+        await setBadgeContribution('recommendations', currentCount);
 
         const lastNotified = await readLastNotifiedCount(userId);
 

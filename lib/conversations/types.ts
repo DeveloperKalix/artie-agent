@@ -6,7 +6,14 @@
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
 
 /** Value of `metadata.source` on assistant messages. */
-export type MessageSource = 'skill' | 'chat' | 'error';
+export type MessageSource =
+  | 'skill'
+  | 'chat'
+  | 'error'
+  // Phase 6 — trade chat cards. Rendered by `components/trade/*` rather than
+  // the default chat bubble; see `components/conversations/message-bubble.tsx`.
+  | 'trade_proposal'
+  | 'trade_reminder';
 
 /** Value of `metadata.kind` when `metadata.source === 'skill'`. */
 export type SkillKind = 'note_appended' | 'level_updated' | 'invalid';
